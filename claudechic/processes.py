@@ -20,6 +20,7 @@ class BackgroundProcess:
     pid: int
     command: str  # Short description of the command
     start_time: datetime
+    output_file: str | None = None  # Path to output file (for background tasks)
 
 
 def _extract_command(cmdline: list[str]) -> str | None:
@@ -111,6 +112,18 @@ def get_child_processes(claude_pid: int) -> list[BackgroundProcess]:
             continue
 
     return processes
+
+
+def parse_background_task_output(result: str) -> str | None:
+    """Parse output file path from a background Bash task result.
+
+    Background tasks return messages like:
+        "Command running in background with ID: abc123. Output is being written to: /path/to/file"
+
+    Returns the output file path, or None if not a background task.
+    """
+    match = re.search(r"Output is being written to: (.+)$", result)
+    return match.group(1) if match else None
 
 
 def get_claude_pid_from_client(client) -> int | None:

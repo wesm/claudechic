@@ -3,6 +3,7 @@
 import os
 import signal
 from datetime import datetime
+from pathlib import Path
 
 import psutil
 from rich.table import Table
@@ -11,7 +12,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical, Horizontal
 from textual.screen import ModalScreen
-from textual.widgets import Static, Button
+from textual.widgets import Static, Button, TextArea
 
 from claudechic.processes import BackgroundProcess
 
@@ -58,6 +59,21 @@ def _get_process_metrics(pid: int) -> dict | None:
         return None
 
 
+def _read_output_tail(output_file: str, max_lines: int = 50) -> str | None:
+    """Read last N lines from output file."""
+    try:
+        path = Path(output_file)
+        if not path.exists():
+            return None
+        text = path.read_text()
+        lines = text.splitlines()
+        if len(lines) > max_lines:
+            lines = lines[-max_lines:]
+        return "\n".join(lines)
+    except Exception:
+        return None
+
+
 class ProcessDetailModal(ModalScreen):
     """Modal showing details for a single process with kill option."""
 
@@ -72,8 +88,10 @@ class ProcessDetailModal(ModalScreen):
 
     ProcessDetailModal #detail-container {
         width: auto;
-        min-width: 40;
+        min-width: 60;
+        max-width: 80%;
         height: auto;
+        max-height: 80%;
         background: $surface;
         border: solid $panel;
         padding: 1 2;
@@ -96,6 +114,14 @@ class ProcessDetailModal(ModalScreen):
     ProcessDetailModal #detail-metrics {
         width: 100%;
         content-align: center middle;
+    }
+
+    ProcessDetailModal #detail-output {
+        width: 100%;
+        height: auto;
+        max-height: 20;
+        margin-top: 1;
+        border: solid $panel;
     }
 
     ProcessDetailModal #detail-footer {
@@ -142,6 +168,12 @@ class ProcessDetailModal(ModalScreen):
                     id="detail-metrics",
                     markup=True,
                 )
+
+            # Show output if available
+            if self.process.output_file:
+                output = _read_output_tail(self.process.output_file)
+                if output:
+                    yield TextArea(output, id="detail-output", read_only=True)
 
             with Horizontal(id="detail-footer"):
                 yield Button("Kill", id="kill-btn", variant="error")

@@ -191,6 +191,8 @@ class Agent:
 
         # Background process tracking (PID of claude binary)
         self._claude_pid: int | None = None
+        # Background task output files: command -> output_file path
+        self._background_outputs: dict[str, str] = {}
 
     # -----------------------------------------------------------------------
     # Lifecycle
@@ -621,12 +623,22 @@ class Agent:
 
     def _handle_tool_result(self, block: ToolResultBlock) -> None:
         """Handle tool result."""
+        from claudechic.processes import parse_background_task_output
+
         tool = self.pending_tools.pop(block.tool_use_id, None)
         if tool:
             tool.result = (
                 block.content if isinstance(block.content, str) else str(block.content)
             )
             tool.is_error = block.is_error or False
+
+            # Track background task output files
+            if tool.name == ToolName.BASH and tool.result:
+                output_file = parse_background_task_output(tool.result)
+                if output_file:
+                    command = tool.input.get("command", "")
+                    self._background_outputs[command] = output_file
+
             if self.observer:
                 self.observer.on_message_updated(self)
                 self.observer.on_tool_result(self, tool)
@@ -792,10 +804,18 @@ class Agent:
         """Get list of background processes for this agent.
 
         Returns:
-            List of BackgroundProcess objects
+            List of BackgroundProcess objects (with output_file if known)
         """
         if not self._claude_pid:
             return []
         from claudechic.processes import get_child_processes
 
-        return get_child_processes(self._claude_pid)
+        processes = get_child_processes(self._claude_pid)
+
+        # Enrich with output files if we have them
+        for proc in processes:
+            if proc.command in self._background_outputs:
+                # Create new instance with output_file set
+                proc.output_file = self._background_outputs[proc.command]
+
+        return processes
