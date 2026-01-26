@@ -19,3 +19,4 @@ uv.lock
 
 # Recordings
 *.cast
+.DS_Store
