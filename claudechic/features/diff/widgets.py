@@ -287,8 +287,8 @@ class HunkWidget(Static, can_focus=True):
         border-left: tall $warning;
     }
     HunkWidget:focus {
-        border-left: tall $primary;
-        background: $primary 15%;
+        border-left: tall $secondary;
+        background: $secondary 10%;
     }
     """
 
