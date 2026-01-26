@@ -1,6 +1,5 @@
 """Session management - loading and listing Claude Code sessions."""
 
-import asyncio
 import json
 import os
 import re
@@ -46,7 +45,7 @@ def find_session_by_prefix(prefix: str, cwd: Path | None = None) -> str | None:
 
 
 def count_sessions(cwd: Path | None = None) -> int:
-    """Count session files without parsing them."""
+    """Count session files in project directory."""
     sessions_dir = get_project_sessions_dir(cwd)
     if not sessions_dir:
         return 0
@@ -84,54 +83,71 @@ def _get_session_file(
     return session_file if session_file.exists() else None
 
 
-def _extract_session_info(
-    content: bytes,
-) -> tuple[str | None, str | None, int, float | None]:
-    """Extract summary, first message, count, and last timestamp from session content.
+def _extract_session_info(filepath: Path) -> tuple[str, int, float]:
+    """Extract title, message count, and timestamp from a session file.
 
-    Returns (summary, first_user_message, msg_count, last_timestamp_unix).
+    Claude Code uses summary field if available, otherwise first user message.
+    Counts non-meta user entries.
+
+    Returns (title, msg_count, last_timestamp_unix).
     """
     from datetime import datetime
 
-    summary = None
-    first_user_msg = None
+    summary = ""
+    first_msg = ""
     msg_count = 0
-    last_timestamp: float | None = None
+    last_timestamp: float = 0
 
-    for line in content.split(b"\n"):
-        if not line.strip():
-            continue
-        try:
-            d = json.loads(line)
-            if d.get("type") == "summary":
-                summary = d.get("summary")
-            elif d.get("type") == "user" and not d.get("isMeta"):
-                msg_count += 1
-                # Capture first user message as fallback title
-                if first_user_msg is None:
-                    text = d.get("message", {}).get("content", "")
-                    if (
-                        isinstance(text, str)
-                        and text.strip()
-                        and not text.startswith("<")
-                    ):
-                        first_user_msg = text.replace("\n", " ")[:100]
-            # Track timestamp from any entry
-            if ts := d.get("timestamp"):
+    try:
+        with open(filepath, encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
                 try:
-                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                    last_timestamp = dt.timestamp()
-                except ValueError:
-                    pass
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            continue
-    return summary, first_user_msg, msg_count, last_timestamp
+                    d = json.loads(line)
+                    msg_type = d.get("type")
+
+                    # Check for summary (preferred title source)
+                    if msg_type == "summary":
+                        summary = d.get("summary", "")
+
+                    # Count and extract first message
+                    elif msg_type == "user" and not d.get("isMeta"):
+                        msg_count += 1
+                        # Extract first message as fallback title
+                        if not first_msg:
+                            content = d.get("message", {}).get("content", "")
+                            if isinstance(content, str) and content.strip():
+                                if not content.startswith("<command-"):
+                                    first_msg = content.replace("\n", " ")[:100]
+                            elif isinstance(content, list) and content:
+                                block = content[0]
+                                if block.get("type") == "text":
+                                    txt = block.get("text", "")
+                                    if txt.strip() and not txt.startswith("<command-"):
+                                        first_msg = txt.replace("\n", " ")[:100]
+
+                    # Track timestamp from any entry
+                    if ts := d.get("timestamp"):
+                        try:
+                            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                            last_timestamp = max(last_timestamp, dt.timestamp())
+                        except ValueError:
+                            pass
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    continue
+    except (IOError, OSError):
+        pass
+
+    # Prefer summary over first message
+    title = summary or first_msg
+    return title, msg_count, last_timestamp
 
 
 async def get_recent_sessions(
     limit: int = 20, search: str = "", cwd: Path | None = None
 ) -> list[tuple[str, str, float, int]]:
-    """Get recent sessions from a project.
+    """Get recent sessions from session files (matching Claude Code behavior).
 
     Args:
         limit: Maximum number of sessions to return
@@ -146,7 +162,7 @@ async def get_recent_sessions(
     if not sessions_dir:
         return []
 
-    # Get files sorted by mtime
+    # Get files sorted by mtime for initial ordering
     candidates = []
     for f in sessions_dir.glob("*.jsonl"):
         if not is_valid_uuid(f.stem):
@@ -163,31 +179,29 @@ async def get_recent_sessions(
     search_lower = search.lower()
     sessions = []
 
-    for i, (f, mtime) in enumerate(candidates):
-        if i > 0 and i % 10 == 0:
-            await asyncio.sleep(0)
+    # We need to scan more files than limit because file mtime may not match
+    # content timestamp. Scan up to 5x limit to catch recent sessions.
+    scan_limit = limit * 5
 
-        try:
-            async with aiofiles.open(f, mode="rb") as fh:
-                content = await fh.read()
-            summary, first_msg, msg_count, last_ts = _extract_session_info(content)
-            title = summary or first_msg or f.stem[:8]
-            # Prefer timestamp from file content over file mtime
-            effective_time = last_ts or mtime
-        except (IOError, OSError):
-            title = f.stem[:8]
-            msg_count = 0
-            effective_time = mtime
+    for i, (f, mtime) in enumerate(candidates):
+        if i >= scan_limit:
+            break
+
+        title, msg_count, last_ts = _extract_session_info(f)
 
         if msg_count == 0:
             continue
+
+        title = title or f.stem[:8]
         if search and search_lower not in title.lower():
             continue
 
+        # Prefer timestamp from file content over file mtime
+        effective_time = last_ts or mtime
         sessions.append((f.stem, title, effective_time, msg_count))
 
-        if not search and len(sessions) >= limit:
-            break
+    # Sort by content timestamp (more accurate than file mtime)
+    sessions.sort(key=lambda x: x[2], reverse=True)
 
     return sessions[:limit]
 
