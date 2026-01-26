@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Callable, Iterator
@@ -184,11 +185,12 @@ class AgentManager:
 
         return True
 
-    async def close(self, agent_id: str) -> None:
+    async def close(self, agent_id: str, *, skip_switch: bool = False) -> None:
         """Close an agent and clean up.
 
         Args:
             agent_id: ID of agent to close
+            skip_switch: If True, don't switch to another agent (used by close_all)
         """
         agent = self.agents.pop(agent_id, None)
         if not agent:
@@ -207,16 +209,22 @@ class AgentManager:
             self.manager_observer.on_agent_closed(agent_id, message_count)
 
         # Switch to another agent if we closed the active one
-        if was_active and self.agents:
+        if not skip_switch and was_active and self.agents:
             next_id = next(iter(self.agents))
             self.switch(next_id)
         elif was_active:
             self.active_id = None
 
     async def close_all(self) -> None:
-        """Close all agents."""
-        for agent_id in list(self.agents.keys()):
-            await self.close(agent_id)
+        """Close all agents in parallel."""
+        agent_ids = list(self.agents.keys())
+        results = await asyncio.gather(
+            *(self.close(aid, skip_switch=True) for aid in agent_ids),
+            return_exceptions=True,
+        )
+        for aid, result in zip(agent_ids, results):
+            if isinstance(result, Exception):
+                log.warning(f"Failed to close agent {aid}: {result}")
 
     def __len__(self) -> int:
         """Number of agents."""

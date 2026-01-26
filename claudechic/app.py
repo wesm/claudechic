@@ -52,7 +52,7 @@ from claudechic.features.worktree.commands import on_response_complete_finish
 from claudechic.permissions import PermissionRequest, PermissionResponse
 from claudechic.agent import Agent, ImageAttachment, ToolUse
 from claudechic.agent_manager import AgentManager
-from claudechic.analytics import capture
+from claudechic.analytics import capture, sanitize_error_message
 from claudechic.config import get_theme, set_theme, is_new_install
 from claudechic.enums import AgentStatus, PermissionChoice, ToolName
 from claudechic.mcp import set_app, create_chic_server
@@ -622,6 +622,12 @@ class ChatApp(App):
         try:
             await agent.connect(options, resume=resume)
         except CLIConnectionError as e:
+            await capture(
+                "error_occurred",
+                error_type="CLIConnectionError",
+                error_message=sanitize_error_message(str(e)),
+                context="initial_connect",
+            )
             self.exit(
                 message=f"Connection failed: {e}\n\nPlease run `claude /login` to authenticate."
             )
@@ -1212,21 +1218,20 @@ class ChatApp(App):
             self._last_quit_time = now
             self.notify("Press Ctrl+C again to quit")
 
-    async def _cleanup_and_exit(self) -> None:
-        """Disconnect all agents and exit."""
+    async def _cleanup_and_exit(self, reason: str = "quit") -> None:
+        """Disconnect all agents and exit.
+
+        Args:
+            reason: Why the app is closing (quit, crash, error)
+        """
+        # Close all agents in parallel (fires agent_closed events with message_count)
+        if self.agent_mgr:
+            await self.agent_mgr.close_all()
+
         # Track app close with session duration
         duration = time.time() - getattr(self, "_app_start_time", time.time())
-        await capture("app_closed", duration_seconds=int(duration))
+        await capture("app_closed", duration_seconds=int(duration), end_reason=reason)
 
-        for agent in self.agents.values():
-            if agent.client:
-                try:
-                    # disconnect() terminates the subprocess and waits for it to finish,
-                    # allowing it to flush session files before we exit
-                    await agent.client.disconnect()
-                except Exception:
-                    pass  # Best-effort cleanup during shutdown
-                agent.client = None
         # Suppress SDK stderr noise during exit (stream closed errors)
         sys.stderr = open(os.devnull, "w")
         self.exit()
@@ -1938,6 +1943,10 @@ class ChatApp(App):
             capture(
                 "error_occurred",
                 error_type=error_type,
+                error_message=sanitize_error_message(str(exception))
+                if exception
+                else "",
+                context="response",
                 status_code=status_code,
                 agent_id=agent.analytics_id,
             )
@@ -1946,6 +1955,14 @@ class ChatApp(App):
     def on_connection_lost(self, agent: Agent) -> None:
         """Handle lost SDK connection - reconnect."""
         log.info(f"Connection lost for agent {agent.name}, reconnecting...")
+        self.run_worker(
+            capture(
+                "error_occurred",
+                error_type="ConnectionLost",
+                context="connection_lost",
+                agent_id=agent.analytics_id,
+            )
+        )
         self.notify("Reconnecting...", timeout=2)
         self._reconnect_after_interrupt(agent)
 
@@ -1960,6 +1977,13 @@ class ChatApp(App):
             self.notify("Reconnected", timeout=2)
         except Exception as e:
             log.exception("Failed to reconnect after interrupt")
+            await capture(
+                "error_occurred",
+                error_type=type(e).__name__,
+                error_message=sanitize_error_message(str(e)),
+                context="reconnect_failed",
+                agent_id=agent.analytics_id,
+            )
             self.show_error("Reconnect failed", e)
 
     def on_complete(self, agent: Agent, result: ResultMessage | None) -> None:
@@ -2035,7 +2059,8 @@ class ChatApp(App):
         if tool.is_error:
             error_preview = (tool.result or "Unknown error")[:200]
             log.warning(f"Tool error [{tool.name}]: {error_preview}")
-            # Also show in UI as a system notification
+            # Note: We don't track tool errors to analytics - these are normal
+            # workflow errors (file not found, etc), not system errors
             self.notify(f"Tool error: {tool.name}", severity="warning", timeout=5)
 
         # Track edited files in sidebar
@@ -2099,6 +2124,15 @@ class ChatApp(App):
             async with self._show_prompt(QuestionPrompt(questions), agent) as prompt:
                 answers = await prompt.wait()
 
+            choice = PermissionChoice.ALLOW if answers else PermissionChoice.DENY
+            self.run_worker(
+                capture(
+                    "permission_response",
+                    tool="AskUserQuestion",
+                    choice=choice.value,
+                    agent_id=agent.analytics_id,
+                )
+            )
             if not answers:
                 return PermissionResponse(PermissionChoice.DENY)
 
@@ -2151,6 +2185,17 @@ class ChatApp(App):
             self.notify("Auto-edit enabled (Shift+Tab to disable)")
         elif result.choice == PermissionChoice.ALLOW_SESSION:
             self.notify(f"{request.tool_name} allowed for this session")
+
+        # Track permission prompt response
+        self.run_worker(
+            capture(
+                "permission_response",
+                tool=request.tool_name,
+                choice=result.choice.value,
+                has_alternative=bool(result.alternative_message),
+                agent_id=agent.analytics_id,
+            )
+        )
 
         return result
 

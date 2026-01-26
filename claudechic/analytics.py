@@ -2,6 +2,7 @@
 
 import os
 import platform
+import re
 import shutil
 import uuid as uuid_mod
 from datetime import datetime, timezone
@@ -52,6 +53,30 @@ def get_terminal_program() -> str:
         return "conemu"
     # Fallback to generic TERM
     return os.environ.get("TERM", "unknown")
+
+
+# Patterns that might contain sensitive data
+_SENSITIVE_PATTERNS = [
+    re.compile(r"/Users/[^/\s]+", re.IGNORECASE),  # macOS home paths
+    re.compile(r"/home/[^/\s]+", re.IGNORECASE),  # Linux home paths
+    re.compile(r"C:\\Users\\[^\\\s]+", re.IGNORECASE),  # Windows home paths
+    re.compile(
+        r"[a-zA-Z0-9_-]*(?:key|token|secret|password|auth)[a-zA-Z0-9_-]*\s*[=:]\s*\S+",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"/[^\s:]+\.[a-z]{2,4}\b", re.IGNORECASE
+    ),  # File paths like /tmp/foo.json
+]
+
+
+def sanitize_error_message(msg: str, max_length: int = 200) -> str:
+    """Sanitize error message for analytics - remove paths and potential secrets."""
+    if not msg:
+        return ""
+    for pattern in _SENSITIVE_PATTERNS:
+        msg = pattern.sub("[REDACTED]", msg)
+    return msg[:max_length]
 
 
 async def capture(
