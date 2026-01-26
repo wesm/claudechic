@@ -2052,6 +2052,12 @@ class ChatApp(App):
         """Handle command output from agent (e.g., /context)."""
         self.post_message(CommandOutputMessage(content, agent_id=agent.id))
 
+    def on_skill_loaded(self, agent: Agent, skill_name: str) -> None:
+        """Handle SDK-loaded skill - clear pending slash command."""
+        # SDK recognized the command as a skill, so it's not unknown
+        self._pending_slash_commands.pop(agent.id, None)
+        log.info(f"Skill loaded: {skill_name}")
+
     def on_prompt_sent(
         self, agent: Agent, prompt: str, images: list[ImageAttachment]
     ) -> None:

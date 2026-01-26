@@ -7,6 +7,7 @@ import base64
 import json
 import logging
 import mimetypes
+import re
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
@@ -494,6 +495,11 @@ class Agent:
                 # Handle local command output (e.g., /context)
                 if "<local-command-stdout>" in content:
                     self._handle_command_output(content)
+                # Detect SDK-loaded skills (e.g., /cleanup -> <command-name>/cleanup</command-name>)
+                if "<command-name>/" in content:
+                    match = re.search(r"<command-name>(/\w+)</command-name>", content)
+                    if match and self.observer:
+                        self.observer.on_skill_loaded(self, match.group(1))
             elif isinstance(content, list):
                 for block in content:
                     if isinstance(block, ToolResultBlock):

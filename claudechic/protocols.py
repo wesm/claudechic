@@ -87,6 +87,10 @@ class AgentObserver(Protocol):
         """Called for local command output (e.g., /context)."""
         ...
 
+    def on_skill_loaded(self, agent: Agent, skill_name: str) -> None:
+        """Called when SDK loads a skill (user-defined slash command)."""
+        ...
+
     def on_prompt_sent(
         self, agent: Agent, prompt: str, images: list[ImageAttachment]
     ) -> None:
