@@ -70,6 +70,12 @@ INTERACTIVE_SUBCOMMANDS = frozenset(
     }
 )
 
+# Bare words mapped to their equivalent slash commands
+BARE_WORDS: dict[str, str] = {
+    "quit": "/exit",
+    "exit": "/exit",
+}
+
 # Command registry: (name, description, [variants for autocomplete])
 # Variants are additional completions like "/agent close" for "/agent"
 COMMANDS: list[tuple[str, str, list[str]]] = [
@@ -147,6 +153,9 @@ def _track_command(app: "ChatApp", command: str) -> None:
 def handle_command(app: "ChatApp", prompt: str) -> bool:
     """Route slash commands. Returns True if handled, False to send to Claude."""
     cmd = prompt.strip()
+
+    # Map bare words to their slash command equivalents
+    cmd = BARE_WORDS.get(cmd, cmd)
 
     # Handle ! prefix for inline shell commands
     if cmd.startswith("!"):

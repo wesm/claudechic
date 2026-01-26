@@ -47,7 +47,7 @@ from claudechic.sessions import (
 )
 from claudechic.features.diff import EditFileRequested
 from claudechic.features.worktree import list_worktrees
-from claudechic.commands import handle_command
+from claudechic.commands import BARE_WORDS, handle_command
 from claudechic.features.worktree.commands import on_response_complete_finish
 from claudechic.permissions import PermissionRequest, PermissionResponse
 from claudechic.agent import Agent, ImageAttachment, ToolUse
@@ -767,11 +767,13 @@ class ChatApp(App):
         if agent:
             append_to_history(prompt, agent.cwd, agent.session_id or agent.id)
 
-        # Try slash commands and bang commands first
+        # Try slash commands, bang commands, and special keywords first
         stripped = prompt.strip()
-        if (stripped.startswith("/") or stripped.startswith("!")) and handle_command(
-            self, prompt
-        ):
+        if (
+            stripped.startswith("/")
+            or stripped.startswith("!")
+            or stripped in BARE_WORDS
+        ) and handle_command(self, prompt):
             return
 
         # Track message sent
