@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import sys
 from importlib.metadata import version
 
 from claudechic.app import ChatApp
@@ -64,7 +65,9 @@ def main():
         crash_log = Path(tempfile.gettempdir()) / "claudechic-crash.log"
         with open(crash_log, "w", encoding="utf-8") as f:
             traceback.print_exc(file=f)
-        raise
+        # Print standard traceback (not rich's fancy one) and exit
+        traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -196,6 +196,15 @@ class ChatApp(App):
         # agent_id -> command name (e.g., "/cleanup")
         self._pending_slash_commands: dict[str, str] = {}
 
+    def _fatal_error(self) -> None:
+        """Override to use plain Python tracebacks instead of rich's fancy ones."""
+        import traceback
+
+        self.bell()
+        # Store plain text traceback for display after exit
+        self._exit_renderables.append(traceback.format_exc())
+        self._close_messages_no_wait()
+
     # Properties to access active agent's state
     @property
     def _agent(self) -> Agent | None:
