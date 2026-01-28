@@ -543,10 +543,14 @@ class ChatApp(App):
         context_file = files("claudechic").joinpath("context.md")
         system_prompt = context_file.read_text()
 
+        # Filter ANTHROPIC_API_KEY to prefer subscription auth
+        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+
         return ClaudeAgentOptions(
             permission_mode="bypassPermissions"
             if self._skip_permissions
             else "default",
+            env=env,
             setting_sources=["user", "project", "local"],
             cwd=cwd,
             resume=resume,
