@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from importlib.resources import files
 import logging
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -93,6 +94,9 @@ from claudechic.tasks import create_safe_task
 from claudechic.sampling import start_sampler
 
 log = logging.getLogger(__name__)
+
+# Pattern to strip SDK's <tool_use_error> tags from error messages
+TOOL_USE_ERROR_PATTERN = re.compile(r"</?tool_use_error>")
 
 
 def _categorize_cli_error(e: CLIConnectionError) -> str:
@@ -2127,7 +2131,9 @@ class ChatApp(App):
 
         # Show tool errors prominently in chat
         if tool.is_error:
-            error_preview = (tool.result or "Unknown error")[:200]
+            # Strip SDK's <tool_use_error> tags from display
+            error_msg = TOOL_USE_ERROR_PATTERN.sub("", tool.result or "Unknown error")
+            error_preview = error_msg[:200]
             log.warning(f"Tool error [{tool.name}]: {error_preview}")
             # Note: We don't track tool errors to analytics - these are normal
             # workflow errors (file not found, etc), not system errors
