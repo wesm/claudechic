@@ -152,7 +152,7 @@ while url:
 
 ### Key Fields (Events API)
 - `e['event']` - event name
-- `e['distinct_id']` - user ID (UUID or "mrocklin")
+- `e['distinct_id']` - user ID (UUID)
 - `e['timestamp']` - ISO timestamp
 - `e['properties']` - event-specific data plus `$session_id`
 - `e['id']` - unique PostHog event ID (use for deduplication)

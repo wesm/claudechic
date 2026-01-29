@@ -5,7 +5,7 @@
 Sessions stored in `~/.claude/projects/-path-to-project/` where path uses dashes instead of slashes.
 
 ```
-~/.claude/projects/-Users-mrocklin-workspace-myproject/
+~/.claude/projects/-Users-username-myproject/
 ├── 114f29a1-e962-4346-9306-5239fb5d698a.jsonl  # Main sessions (UUID)
 ├── agent-a4b310b.jsonl                          # Sub-agent sessions
 └── *.jsonl.bak                                  # Backups from compaction

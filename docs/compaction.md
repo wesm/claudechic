@@ -92,7 +92,7 @@ The `/compactish` approach is more aggressive - it permanently removes tool uses
 Sessions are stored as JSONL files in `~/.claude/projects/`:
 
 ```
-~/.claude/projects/-Users-username-workspace-myproject/
+~/.claude/projects/-Users-username-myproject/
 ├── a1b2c3d4-e5f6-7890-abcd-ef1234567890.jsonl
 ├── agent-abc123.jsonl  # Sub-agent sessions
 └── *.jsonl.bak         # Backups from compaction
