@@ -97,6 +97,19 @@ class ToolUseWidget(BaseToolWidget):
         """Update plan path (for ExitPlanMode when path becomes available later)."""
         self._plan_path = plan_path
 
+    def _make_diff_content(self) -> list[DiffWidget]:
+        """Factory for lazy DiffWidget creation."""
+        path = make_relative(self.block.input.get("file_path", ""), self._cwd)
+        return [
+            DiffWidget(
+                self.block.input.get("old_string", ""),
+                self.block.input.get("new_string", ""),
+                path=path,
+                replace_all=self.block.input.get("replace_all", False),
+                id="diff-content",
+            )
+        ]
+
     def compose(self) -> ComposeResult:
         if not self.result:
             yield Spinner()
@@ -118,28 +131,31 @@ class ToolUseWidget(BaseToolWidget):
                 if self._plan_path:
                     yield Button("📋 Edit Plan", classes="edit-plan-btn")
             return
-        with QuietCollapsible(title=self._header, collapsed=self._initial_collapsed):
-            if self.block.name == ToolName.EDIT:
-                path = make_relative(self.block.input.get("file_path", ""), self._cwd)
-                yield DiffWidget(
-                    self.block.input.get("old_string", ""),
-                    self.block.input.get("new_string", ""),
-                    path=path,
-                    replace_all=self.block.input.get("replace_all", False),
-                    id="diff-content",
+        # Edit tool: use lazy content when collapsed (DiffWidget is expensive)
+        if self.block.name == ToolName.EDIT:
+            if self._initial_collapsed:
+                # Lazy: defer DiffWidget creation until expanded
+                yield QuietCollapsible(
+                    title=self._header,
+                    collapsed=True,
+                    content_factory=self._make_diff_content,
                 )
             else:
-                tool_input = format_tool_input(
-                    self.block.name, self.block.input, self._cwd
-                )
-                # Bash uses "$ command" format with blank line separator
-                if self.block.name == ToolName.BASH:
-                    yield Static(f"$ {tool_input}", id="tool-input", markup=False)
-                    yield Static("", id="tool-separator")
-                else:
-                    yield Static(tool_input, id="tool-input", markup=False)
-                    yield Static("─" * 40, id="tool-separator")
-                yield Static("", id="tool-output", markup=False)
+                # Immediate: user needs to see diff now
+                with QuietCollapsible(title=self._header, collapsed=False):
+                    yield from self._make_diff_content()
+            return
+        # Other tools: use normal pattern
+        with QuietCollapsible(title=self._header, collapsed=self._initial_collapsed):
+            tool_input = format_tool_input(self.block.name, self.block.input, self._cwd)
+            # Bash uses "$ command" format with blank line separator
+            if self.block.name == ToolName.BASH:
+                yield Static(f"$ {tool_input}", id="tool-input", markup=False)
+                yield Static("", id="tool-separator")
+            else:
+                yield Static(tool_input, id="tool-input", markup=False)
+                yield Static("─" * 40, id="tool-separator")
+            yield Static("", id="tool-output", markup=False)
 
     def stop_spinner(self) -> None:
         """Stop and remove the spinner."""

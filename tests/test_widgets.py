@@ -618,3 +618,136 @@ def test_word_diff_with_go_syntax():
         text = old_line[start:end]
         # Should not have partial words (no cuts mid-identifier)
         assert not text[0].isalnum() or start == 0 or not old_line[start - 1].isalnum()
+
+
+# --- Lazy collapsible tests ---
+
+
+@pytest.mark.asyncio
+async def test_quiet_collapsible_lazy_content():
+    """QuietCollapsible with content_factory defers widget creation until expanded."""
+    from claudechic.widgets.primitives.collapsible import QuietCollapsible
+
+    factory_called = False
+
+    def make_content():
+        nonlocal factory_called
+        factory_called = True
+        return [Static("Lazy content", id="lazy-content")]
+
+    class TestApp(App):
+        def compose(self):
+            yield QuietCollapsible(
+                title="Test",
+                collapsed=True,
+                content_factory=make_content,
+            )
+
+    app = TestApp()
+    async with app.run_test() as pilot:
+        collapsible = app.query_one(QuietCollapsible)
+
+        # Factory should NOT be called yet (collapsed)
+        assert not factory_called
+        assert collapsible.collapsed
+
+        # Expand the collapsible
+        collapsible.collapsed = False
+        await pilot.pause()
+
+        # Factory should now be called
+        assert factory_called
+
+        # Content should be mounted
+        content = collapsible.query_one("#lazy-content", Static)
+        assert content is not None
+
+
+@pytest.mark.asyncio
+async def test_quiet_collapsible_immediate_content():
+    """QuietCollapsible with content_factory and collapsed=False composes immediately."""
+    from claudechic.widgets.primitives.collapsible import QuietCollapsible
+
+    factory_called = False
+
+    def make_content():
+        nonlocal factory_called
+        factory_called = True
+        return [Static("Immediate content", id="immediate-content")]
+
+    class TestApp(App):
+        def compose(self):
+            # collapsed=False means content should be mounted immediately
+            yield QuietCollapsible(
+                title="Test",
+                collapsed=False,
+                content_factory=make_content,
+            )
+
+    app = TestApp()
+    async with app.run_test():
+        collapsible = app.query_one(QuietCollapsible)
+        # Factory should be called during watch on expand
+        assert factory_called
+        # Content should be mounted
+        content = collapsible.query_one("#immediate-content", Static)
+        assert content is not None
+
+
+@pytest.mark.asyncio
+async def test_quiet_collapsible_context_manager_still_works():
+    """QuietCollapsible context manager pattern continues to work."""
+    from claudechic.widgets.primitives.collapsible import QuietCollapsible
+
+    class TestApp(App):
+        def compose(self):
+            with QuietCollapsible(title="Normal", collapsed=False):
+                yield Static("Context manager content", id="ctx-content")
+
+    app = TestApp()
+    async with app.run_test():
+        collapsible = app.query_one(QuietCollapsible)
+        content = collapsible.query_one("#ctx-content", Static)
+        assert content is not None
+
+
+@pytest.mark.asyncio
+async def test_tool_use_widget_edit_lazy_diff():
+    """ToolUseWidget with Edit tool uses lazy DiffWidget when collapsed."""
+    from claude_agent_sdk import ToolUseBlock
+
+    from claudechic.widgets.content.diff import DiffWidget
+    from claudechic.widgets.content.tools import ToolUseWidget
+    from claudechic.widgets.primitives.collapsible import QuietCollapsible
+
+    block = ToolUseBlock(
+        id="test-edit",
+        name="Edit",
+        input={
+            "file_path": "/test/file.py",
+            "old_string": "old code",
+            "new_string": "new code",
+        },
+    )
+
+    class TestApp(App):
+        def compose(self):
+            # collapsed=True should use lazy pattern
+            yield ToolUseWidget(block, collapsed=True, completed=True)
+
+    app = TestApp()
+    async with app.run_test() as pilot:
+        widget = app.query_one(ToolUseWidget)
+        collapsible = widget.query_one(QuietCollapsible)
+
+        # DiffWidget should NOT exist yet (lazy)
+        diffs = widget.query(DiffWidget)
+        assert len(diffs) == 0
+
+        # Expand the collapsible
+        collapsible.collapsed = False
+        await pilot.pause()
+
+        # DiffWidget should now exist
+        diffs = widget.query(DiffWidget)
+        assert len(diffs) == 1
