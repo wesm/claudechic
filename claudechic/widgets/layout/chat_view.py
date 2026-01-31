@@ -217,6 +217,15 @@ class ChatView(AutoHideScroll):
             return TaskWidget(block, collapsed=should_collapse, cwd=cwd)
         elif tool.name.startswith("mcp__chic__"):
             return AgentToolWidget(block, cwd=cwd, completed=completed)
+        elif tool.name == ToolName.EXIT_PLAN_MODE:
+            plan_path = self._agent.plan_path if self._agent else None
+            return ToolUseWidget(
+                block,
+                collapsed=should_collapse,
+                completed=completed,
+                cwd=cwd,
+                plan_path=plan_path,
+            )
         else:
             return ToolUseWidget(
                 block, collapsed=should_collapse, completed=completed, cwd=cwd
@@ -323,6 +332,12 @@ class ChatView(AutoHideScroll):
             self._active_task_widgets[tool.id] = widget
         elif tool.name.startswith("mcp__chic__"):
             widget = AgentToolWidget(block, cwd=cwd)
+        elif tool.name == ToolName.EXIT_PLAN_MODE:
+            # Pass agent's plan_path for correct plan file lookup
+            plan_path = self._agent.plan_path if self._agent else None
+            widget = ToolUseWidget(
+                block, collapsed=collapsed, cwd=cwd, plan_path=plan_path
+            )
         else:
             widget = ToolUseWidget(block, collapsed=collapsed, cwd=cwd)
 

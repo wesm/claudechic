@@ -35,9 +35,6 @@ SYSTEM_REMINDER_PATTERN = re.compile(
     r"\n*<system-reminder>.*?</system-reminder>\n*", re.DOTALL
 )
 
-# Pattern to extract plan file path from ExitPlanMode result
-PLAN_PATH_PATTERN = re.compile(r"saved to:\s*(/[^\s]+\.md)")
-
 
 def _extract_text_content(content: str | list) -> str:
     """Extract text from ToolResultBlock content (handles both str and MCP list format)."""
@@ -86,12 +83,14 @@ class ToolUseWidget(BaseToolWidget):
         collapsed: bool = False,
         completed: bool = False,
         cwd: Path | None = None,
+        plan_path: Path | None = None,
     ) -> None:
         super().__init__()
         self.block = block
         self.result: ToolResultBlock | bool | None = True if completed else None
         self._initial_collapsed = collapsed
         self._cwd = cwd
+        self._plan_path = plan_path  # For ExitPlanMode
         self._header = format_tool_header(self.block.name, self.block.input, cwd)
 
     def compose(self) -> ComposeResult:
@@ -112,6 +111,8 @@ class ToolUseWidget(BaseToolWidget):
                     yield Markdown(plan_content, id="plan-content")
                 else:
                     yield Static("(Plan content not available)", id="tool-output")
+                if self._plan_path:
+                    yield Button("📋 Edit Plan", classes="edit-plan-btn")
             return
         with QuietCollapsible(title=self._header, collapsed=self._initial_collapsed):
             if self.block.name == ToolName.EDIT:
@@ -149,59 +150,22 @@ class ToolUseWidget(BaseToolWidget):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if "edit-plan-btn" in event.button.classes:
             event.stop()
-            if hasattr(self, "_plan_path"):
+            if self._plan_path:
                 self.post_message(EditPlanRequested(self._plan_path))
 
     def _get_plan_content(self) -> str | None:
-        """Get plan content for ExitPlanMode display.
-
-        Tries multiple sources:
-        1. 'plan' field in tool input (SDK includes full plan text)
-        2. Fallback: most recently modified plan file in ~/.claude/plans/
-           (only if modified within last 60 seconds, to avoid wrong file)
-        """
-        # Prefer plan from tool input (most reliable)
+        """Get plan content for ExitPlanMode display."""
+        # Prefer plan from tool input
         if plan := self.block.input.get("plan"):
             return plan
 
-        # Fallback: find most recently modified plan file
-        # This is less reliable if multiple sessions are active
-        import time
-
-        plans_dir = Path.home() / ".claude" / "plans"
-        if plans_dir.exists():
+        # Use plan_path from agent (session-specific)
+        if self._plan_path and self._plan_path.exists():
             try:
-                plan_files = sorted(
-                    plans_dir.glob("*.md"),
-                    key=lambda p: p.stat().st_mtime,
-                    reverse=True,
-                )
-                if plan_files:
-                    recent = plan_files[0]
-                    # Only use if very recently modified (plan was just written)
-                    if time.time() - recent.stat().st_mtime < 60:
-                        self._plan_path = recent
-                        return recent.read_text()
+                return self._plan_path.read_text()
             except Exception:
                 pass
-        return None
 
-    def _extract_plan_from_result(self, content: str) -> str | None:
-        """Extract plan from ExitPlanMode result content.
-
-        The result typically contains text with 'Approved Plan:' followed by the plan,
-        or may have plan info embedded in other text.
-        """
-        # Look for "Approved Plan:" section and extract everything after
-        if "Approved Plan:" in content:
-            idx = content.index("Approved Plan:")
-            plan_text = content[idx + len("Approved Plan:") :].strip()
-            return plan_text if plan_text else None
-        # Fallback: look for markdown heading
-        lines = content.split("\n")
-        for i, line in enumerate(lines):
-            if line.startswith("# "):
-                return "\n".join(lines[i:])
         return None
 
     def set_result(self, result: ToolResultBlock) -> None:
@@ -231,8 +195,8 @@ class ToolUseWidget(BaseToolWidget):
                 )
                 if summary:
                     collapsible.title = f"{self._header} {summary}"
-            # Edit uses DiffWidget, skip output update
-            if self.block.name == ToolName.EDIT:
+            # Edit uses DiffWidget, ExitPlanMode uses Markdown - skip output update
+            if self.block.name in {ToolName.EDIT, ToolName.EXIT_PLAN_MODE}:
                 return
             # Update tool-output Static with plain text result
             output_widget = collapsible.query_one("#tool-output", Static)
@@ -265,20 +229,6 @@ class ToolUseWidget(BaseToolWidget):
                         )
                         preview += f"\n... ({shown} of {total} lines shown)"
                     output_widget.update(preview)
-                elif self.block.name == ToolName.EXIT_PLAN_MODE:
-                    # Extract plan from result and render as Markdown
-                    plan = self._extract_plan_from_result(content)
-                    if plan:
-                        # Replace the Static with Markdown widget
-                        output_widget.remove()
-                        collapsible.mount(Markdown(plan, id="plan-content"))
-                    # Add View Plan button if we can find the path
-                    plan_match = PLAN_PATH_PATTERN.search(content)
-                    if plan_match:
-                        self._plan_path = Path(plan_match.group(1))
-                        collapsible.mount(
-                            Button("📋 View Plan in Editor", classes="edit-plan-btn")
-                        )
                 elif self.block.name == ToolName.ENTER_PLAN_MODE:
                     output_widget.update("Entered plan mode")
                 else:

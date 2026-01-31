@@ -2412,25 +2412,12 @@ class ChatApp(App):
         self, request: PermissionRequest, agent: Agent
     ) -> PermissionResponse:
         """Handle ExitPlanMode with plan-specific options."""
-        # Get plan content and path - try multiple sources
+        # Get plan content from agent's plan_path (set when entering plan mode)
         plan_content: str | None = request.tool_input.get("plan")
         plan_path = agent.plan_path
 
         if not plan_content and plan_path and plan_path.exists():
             plan_content = plan_path.read_text()
-
-        # Fallback: most recently modified plan file
-        if not plan_content:
-            plans_dir = Path.home() / ".claude" / "plans"
-            if plans_dir.exists():
-                plan_files = sorted(
-                    plans_dir.glob("*.md"),
-                    key=lambda p: p.stat().st_mtime,
-                    reverse=True,
-                )
-                if plan_files:
-                    plan_path = plan_files[0]
-                    plan_content = plan_path.read_text()
 
         options = [
             ("clear_auto", "Yes, clear context and auto-approve edits"),
