@@ -2465,6 +2465,10 @@ class ChatApp(App):
         """Handle ExitPlanMode with plan-specific options."""
         # Get plan content from agent's plan_path (set when entering plan mode)
         plan_content: str | None = request.tool_input.get("plan")
+
+        # Ensure plan_path is fetched (may not be ready if EnterPlanMode just completed)
+        if not agent.plan_path:
+            await agent.ensure_plan_path()
         plan_path = agent.plan_path
 
         if not plan_content and plan_path and plan_path.exists():

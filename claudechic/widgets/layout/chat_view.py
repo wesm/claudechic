@@ -369,6 +369,14 @@ class ChatView(AutoHideScroll):
 
         widget = self._pending_tool_widgets.get(tool_id)
         if widget:
+            # For ExitPlanMode, update plan_path in case it wasn't available at creation
+            if (
+                isinstance(widget, ToolUseWidget)
+                and widget.block.name == ToolName.EXIT_PLAN_MODE
+            ):
+                plan_path = self._agent.plan_path if self._agent else None
+                if plan_path and not widget._plan_path:
+                    widget.set_plan_path(plan_path)
             widget.set_result(block)
             del self._pending_tool_widgets[tool_id]
             # Clean up task tracking if this was a task

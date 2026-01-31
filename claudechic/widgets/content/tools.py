@@ -93,6 +93,10 @@ class ToolUseWidget(BaseToolWidget):
         self._plan_path = plan_path  # For ExitPlanMode
         self._header = format_tool_header(self.block.name, self.block.input, cwd)
 
+    def set_plan_path(self, plan_path: Path | None) -> None:
+        """Update plan path (for ExitPlanMode when path becomes available later)."""
+        self._plan_path = plan_path
+
     def compose(self) -> ComposeResult:
         if not self.result:
             yield Spinner()
@@ -168,6 +172,25 @@ class ToolUseWidget(BaseToolWidget):
 
         return None
 
+    def _try_update_plan_content(self, collapsible: QuietCollapsible) -> None:
+        """Try to update ExitPlanMode plan content if it wasn't available at compose time."""
+        try:
+            # Check if we have the placeholder - if plan-content exists, we're good
+            collapsible.query_one("#plan-content", Markdown)
+            return  # Already has Markdown content
+        except Exception:
+            pass  # No Markdown, check for tool-output placeholder
+
+        # Try to get plan content now
+        plan_content = self._get_plan_content()
+        if plan_content:
+            try:
+                output_widget = collapsible.query_one("#tool-output", Static)
+                output_widget.remove()
+                collapsible.mount(Markdown(plan_content, id="plan-content"))
+            except Exception:
+                pass
+
     def set_result(self, result: ToolResultBlock) -> None:
         """Update with tool result."""
         self.result = result
@@ -195,8 +218,12 @@ class ToolUseWidget(BaseToolWidget):
                 )
                 if summary:
                     collapsible.title = f"{self._header} {summary}"
-            # Edit uses DiffWidget, ExitPlanMode uses Markdown - skip output update
-            if self.block.name in {ToolName.EDIT, ToolName.EXIT_PLAN_MODE}:
+            # Edit uses DiffWidget - skip output update
+            if self.block.name == ToolName.EDIT:
+                return
+            # ExitPlanMode: try to update plan content if not available at compose time
+            if self.block.name == ToolName.EXIT_PLAN_MODE:
+                self._try_update_plan_content(collapsible)
                 return
             # Update tool-output Static with plain text result
             output_widget = collapsible.query_one("#tool-output", Static)

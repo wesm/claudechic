@@ -89,6 +89,8 @@ def setup_logging(level: int = logging.DEBUG) -> None:
         "file", str(Path.home() / "claudechic.log")
     )
     if log_file:
+        # Expand ~ in path (config may use ~/claudechic.log)
+        log_file = str(Path(log_file).expanduser())
         try:
             file_handler = logging.FileHandler(log_file, mode="a")
             file_handler.setFormatter(

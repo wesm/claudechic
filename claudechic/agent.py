@@ -563,6 +563,10 @@ Key Rules:
             self._handle_stream_event(message)
 
         elif isinstance(message, SystemMessage):
+            # Capture session_id from init message (earlier than ResultMessage)
+            if message.subtype == "init" and not self.session_id:
+                if isinstance(message.data, dict) and "session_id" in message.data:
+                    self.session_id = message.data["session_id"]
             if self.observer:
                 self.observer.on_system_message(self, message)
 
@@ -710,7 +714,7 @@ Key Rules:
             elif tool.name == ToolName.ENTER_PLAN_MODE and not tool.is_error:
                 self._set_permission_mode_local("plan")
                 # Fetch plan path asynchronously (needed for ExitPlanMode later)
-                create_safe_task(self._fetch_plan_path(), name="fetch-plan-path")
+                create_safe_task(self.ensure_plan_path(), name="fetch-plan-path")
 
             if self.observer:
                 self.observer.on_message_updated(self)
@@ -727,7 +731,7 @@ Key Rules:
         self,
         tool_name: str,
         tool_input: dict[str, Any],
-        context: ToolPermissionContext,  # noqa: ARG002
+        context: ToolPermissionContext,  # noqa: ARG002  # pyright: ignore[reportUnusedParameter]
     ) -> PermissionResult:
         """Handle permission request from SDK."""
         log.info(f"Permission requested for {tool_name}: {str(tool_input)[:100]}")
@@ -752,6 +756,7 @@ Key Rules:
                     plans_dir = Path.home() / ".claude" / "plans"
                     resolved = Path(file_path).expanduser().resolve()
                     if str(resolved).startswith(str(plans_dir)):
+                        self.plan_path = resolved  # Capture for ExitPlanMode display
                         log.info(f"Auto-approved {tool_name} to plan file (plan mode)")
                         return PermissionResultAllow()
             log.info(f"Denied {tool_name} (plan mode)")
@@ -876,8 +881,8 @@ Key Rules:
             if self.observer:
                 self.observer.on_permission_mode_changed(self)
 
-    async def _fetch_plan_path(self) -> None:
-        """Fetch and cache the plan path for this session."""
+    async def ensure_plan_path(self) -> None:
+        """Fetch and cache the plan path for this session (if not already set)."""
         if self.session_id and not self.plan_path:
             self.plan_path = await get_plan_path_for_session(
                 self.session_id, cwd=self.cwd, must_exist=False
@@ -894,7 +899,7 @@ Key Rules:
             self.permission_mode = mode
             # Fetch plan path when entering plan mode
             if mode == "plan":
-                await self._fetch_plan_path()
+                await self.ensure_plan_path()
             # Only call SDK if connected (client exists and has active connection)
             if self.client and self.session_id:
                 await self.client.set_permission_mode(mode)
