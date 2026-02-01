@@ -1775,6 +1775,7 @@ class ChatApp(App):
         auto_resume: bool = False,
         switch_to: bool = True,
         model: str | None = None,
+        initial_prompt: tuple[str, str] | None = None,
     ) -> None:
         """Create a new agent via AgentManager.
 
@@ -1785,6 +1786,7 @@ class ChatApp(App):
             auto_resume: Try to resume session with most messages in cwd
             switch_to: Whether to switch to the new agent (default True)
             model: Model override (None = SDK default)
+            initial_prompt: (prompt, display_as) tuple to send after connecting
         """
         if self.agent_mgr is None:
             self.notify("Agent manager not initialized", severity="error")
@@ -1839,6 +1841,11 @@ class ChatApp(App):
         else:
             label = f"Worktree '{name}'" if worktree else f"Agent '{name}'"
             self.notify(f"{label} ready")
+
+        # Send initial prompt if provided
+        if initial_prompt:
+            prompt, display_as = initial_prompt
+            self._send_to_agent(agent, prompt, display_as=display_as)
 
     def _execute_plan_fresh(self, agent: Agent) -> None:
         """Clear context and execute plan in fresh session."""

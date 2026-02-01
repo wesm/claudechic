@@ -101,6 +101,7 @@ COMMANDS: list[tuple[str, str, list[str]]] = [
         ["/analytics opt-in", "/analytics opt-out"],
     ),
     ("/welcome", "Show welcome message", []),
+    ("/reviewer", "Spawn a review agent for current changes", []),
     ("/help", "Show help", []),
     ("/exit", "Quit", []),
     ("!<cmd>", "Shell command alias", []),
@@ -134,6 +135,8 @@ def get_help_commands() -> list[tuple[str, str]]:
             display_name = "/compactish [-n]"
         elif name == "/worktree":
             display_name = "/worktree <name>"
+        elif name == "/reviewer":
+            display_name = "/reviewer [focus]"
         result.append((display_name, desc))
     return result
 
@@ -231,6 +234,11 @@ def handle_command(app: "ChatApp", prompt: str) -> bool:
     if cmd == "/welcome":
         _track_command(app, "welcome")
         return _handle_welcome(app)
+
+    if cmd == "/reviewer" or cmd.startswith("/reviewer "):
+        _track_command(app, "reviewer")
+        context = cmd.split(maxsplit=1)[1] if cmd.startswith("/reviewer ") else None
+        return _handle_reviewer(app, context)
 
     if cmd == "/help":
         _track_command(app, "help")
@@ -566,6 +574,37 @@ Repeat this message verbatim. Help them if they have questions.
 """
 
     app._send_to_active_agent(welcome_prompt, display_as="/welcome")
+    return True
+
+
+def _handle_reviewer(app: "ChatApp", context: str | None) -> bool:
+    """Spawn a review agent to critically examine recent changes."""
+    from pathlib import Path
+
+    agent = app._agent
+    cwd = agent.cwd if agent else Path.cwd()
+
+    # Build the review prompt
+    prompt = """\
+Review the recent changes in this repository. Think critically:
+- Look at git diff and recent commits
+- Identify potential bugs, edge cases, or unclear code
+- Consider design and maintainability
+- Note anything that seems off or could be improved
+"""
+    if context:
+        prompt += f"\nFocus area: {context}\n"
+
+    prompt += """
+When done, use tell_agent to send your review back to the agent who spawned you.
+If asked for a follow-up review, check that previous issues were addressed and look for any new concerns.
+When everything looks good, say so clearly so we can wrap up.
+"""
+
+    # Create the review agent and send prompt
+    app._create_new_agent(
+        "reviewer", cwd, switch_to=False, initial_prompt=(prompt, "/reviewer")
+    )
     return True
 
 
