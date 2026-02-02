@@ -52,9 +52,17 @@ def set_app(app: ChatApp) -> None:
     _app = app
 
 
-def _text_response(text: str) -> dict[str, Any]:
+def _text_response(text: str, *, is_error: bool = False) -> dict[str, Any]:
     """Format a text response for MCP."""
-    return {"content": [{"type": "text", "text": text}]}
+    result: dict[str, Any] = {"content": [{"type": "text", "text": text}]}
+    if is_error:
+        result["isError"] = True
+    return result
+
+
+def _error_response(text: str) -> dict[str, Any]:
+    """Format an error response for MCP."""
+    return _text_response(text, is_error=True)
 
 
 def _find_agent_by_name(name: str):
@@ -132,7 +140,7 @@ def _make_spawn_agent(caller_name: str | None = None):
     async def spawn_agent(args: dict[str, Any]) -> dict[str, Any]:
         """Spawn a new agent, optionally with an initial prompt."""
         if _app is None or _app.agent_mgr is None:
-            return _text_response("Error: App not initialized")
+            return _error_response("App not initialized")
         _track_mcp_tool("spawn_agent")
 
         name = args["name"]
@@ -142,17 +150,17 @@ def _make_spawn_agent(caller_name: str | None = None):
         prompt = args.get("prompt")
 
         if not path.exists():
-            return _text_response(f"Error: Path '{path}' does not exist")
+            return _error_response(f"Path '{path}' does not exist")
 
         # Check if agent with this name already exists
         if _app.agent_mgr.find_by_name(name):
-            return _text_response(f"Error: Agent '{name}' already exists")
+            return _error_response(f"Agent '{name}' already exists")
 
         try:
             # Create agent via AgentManager (handles SDK connection)
             agent = await _app.agent_mgr.create(name=name, cwd=path, switch_to=False)
         except Exception as e:
-            return _text_response(f"Error creating agent: {e}")
+            return _error_response(f"Error creating agent: {e}")
 
         result = f"Created agent '{name}' in {path}"
 
@@ -178,7 +186,7 @@ def _make_spawn_worktree(caller_name: str | None = None):
     async def spawn_worktree(args: dict[str, Any]) -> dict[str, Any]:
         """Create a git worktree and spawn an agent in it."""
         if _app is None or _app.agent_mgr is None:
-            return _text_response("Error: App not initialized")
+            return _error_response("App not initialized")
         _track_mcp_tool("spawn_worktree")
 
         name = args["name"]
@@ -187,7 +195,7 @@ def _make_spawn_worktree(caller_name: str | None = None):
         # Create the worktree
         success, message, wt_path = start_worktree(name)
         if not success or wt_path is None:
-            return _text_response(f"Error creating worktree: {message}")
+            return _error_response(f"Error creating worktree: {message}")
 
         try:
             # Create agent in the worktree via AgentManager
@@ -195,7 +203,7 @@ def _make_spawn_worktree(caller_name: str | None = None):
                 name=name, cwd=wt_path, worktree=name, switch_to=False
             )
         except Exception as e:
-            return _text_response(
+            return _error_response(
                 f"Worktree created at {wt_path}, but agent failed: {e}"
             )
 
@@ -223,7 +231,7 @@ def _make_ask_agent(caller_name: str | None = None):
     async def ask_agent(args: dict[str, Any]) -> dict[str, Any]:
         """Send question to an agent. Non-blocking."""
         if _app is None or _app.agent_mgr is None:
-            return _text_response("Error: App not initialized")
+            return _error_response("App not initialized")
         _track_mcp_tool("ask_agent")
 
         name = args["name"]
@@ -231,7 +239,7 @@ def _make_ask_agent(caller_name: str | None = None):
 
         agent, error = _find_agent_by_name(name)
         if agent is None:
-            return _text_response(f"Error: {error}")
+            return _error_response(error or "Agent not found")
 
         _send_prompt_fire_and_forget(
             agent, prompt, caller_name=caller_name, expect_reply=True
@@ -255,7 +263,7 @@ def _make_tell_agent(caller_name: str | None = None):
     async def tell_agent(args: dict[str, Any]) -> dict[str, Any]:
         """Send message to an agent. Non-blocking, no reply expected."""
         if _app is None or _app.agent_mgr is None:
-            return _text_response("Error: App not initialized")
+            return _error_response("App not initialized")
         _track_mcp_tool("tell_agent")
 
         name = args["name"]
@@ -263,7 +271,7 @@ def _make_tell_agent(caller_name: str | None = None):
 
         agent, error = _find_agent_by_name(name)
         if agent is None:
-            return _text_response(f"Error: {error}")
+            return _error_response(error or "Agent not found")
 
         _send_prompt_fire_and_forget(agent, message, caller_name=caller_name)
 
@@ -281,7 +289,7 @@ async def list_agents(args: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001
     """List all agents and their status."""
     try:
         if _app is None or _app.agent_mgr is None:
-            return _text_response("Error: App not initialized")
+            return _error_response("App not initialized")
 
         if len(_app.agent_mgr) == 0:
             return _text_response("No agents running")
@@ -297,7 +305,7 @@ async def list_agents(args: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001
         return _text_response("\n".join(lines))
     except Exception as e:
         log.exception("list_agents failed")
-        return _text_response(f"Error: Failed to list agents: {e}")
+        return _error_response(f"Failed to list agents: {e}")
 
 
 @tool(
@@ -309,23 +317,23 @@ async def finish_worktree(args: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG0
     """Start the worktree finish flow for the current agent."""
     try:
         if _app is None or _app.agent_mgr is None:
-            return _text_response("Error: App not initialized")
+            return _error_response("App not initialized")
         _track_mcp_tool("finish_worktree")
 
         agent = _app.agent_mgr.active
         if agent is None:
-            return _text_response("Error: No active agent")
+            return _error_response("No active agent")
 
         if agent.worktree is None:
-            return _text_response(
-                "Error: Current agent is not in a worktree. "
+            return _error_response(
+                "Current agent is not in a worktree. "
                 "Use this tool only from a worktree agent."
             )
 
         # Get finish info
         success, message, info = get_finish_info(agent.cwd)
         if not success or info is None:
-            return _text_response(f"Error: {message}")
+            return _error_response(message or "Failed to get finish info")
 
         # Diagnose current state
         status = diagnose_worktree(info)
@@ -342,7 +350,7 @@ async def finish_worktree(args: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG0
 
     except Exception as e:
         log.exception("finish_worktree failed")
-        return _text_response(f"Error: {e}")
+        return _error_response(str(e))
 
 
 async def _process_finish_resolution(
@@ -365,7 +373,7 @@ async def _process_finish_resolution(
             success, error = clean_gitignored_files(info.worktree_dir)
             if not success:
                 agent.finish_state = None
-                return _text_response(f"Error cleaning gitignored files: {error}")
+                return _error_response(f"Error cleaning gitignored files: {error}")
             # Re-diagnose and loop
             status = diagnose_worktree(info)
             agent.finish_state.status = status
@@ -396,11 +404,11 @@ async def _process_finish_resolution(
 
         # Unknown action
         agent.finish_state = None
-        return _text_response("Error: Unknown resolution action")
+        return _error_response("Unknown resolution action")
 
     # Max iterations reached
     agent.finish_state = None
-    return _text_response("Error: Too many resolution iterations, aborting")
+    return _error_response("Too many resolution iterations, aborting")
 
 
 async def _do_cleanup(agent: Any, info: Any) -> dict[str, Any]:
@@ -456,17 +464,17 @@ async def close_agent(args: dict[str, Any]) -> dict[str, Any]:
     """Close an agent."""
     try:
         if _app is None or _app.agent_mgr is None:
-            return _text_response("Error: App not initialized")
+            return _error_response("App not initialized")
 
         name = args["name"]
 
         # Can't close the last agent
         if len(_app.agent_mgr) <= 1:
-            return _text_response("Error: Cannot close the last agent")
+            return _error_response("Cannot close the last agent")
 
         agent, error = _find_agent_by_name(name)
         if agent is None:
-            return _text_response(f"Error: {error}")
+            return _error_response(error or "Agent not found")
 
         agent_id = agent.id
         agent_name = agent.name
@@ -478,7 +486,7 @@ async def close_agent(args: dict[str, Any]) -> dict[str, Any]:
     except Exception as e:
         agent_name = args.get("name", "unknown") if args else "unknown"
         log.exception(f"close_agent failed for '{agent_name}'")
-        return _text_response(f"Error: Failed to close agent '{agent_name}': {e}")
+        return _error_response(f"Failed to close agent '{agent_name}': {e}")
 
 
 def create_chic_server(caller_name: str | None = None):

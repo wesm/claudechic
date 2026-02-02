@@ -98,3 +98,20 @@ async def test_ask_agent_without_sender(mock_app):
 
     # Without sender, prompt should be unchanged
     assert bob.received_prompt == "What's the weather?"
+
+
+@pytest.mark.asyncio
+async def test_ask_agent_nonexistent_returns_error(mock_app):
+    """Asking a non-existent agent should return an error with isError=True."""
+    alice = MockAgent("alice")
+    mock_app.agent_mgr.add(alice)
+
+    ask_agent = _make_ask_agent(caller_name="alice")
+
+    # Ask a non-existent agent
+    result = await ask_agent.handler({"name": "ghost", "prompt": "Hello?"})
+
+    # Should return error response with isError flag
+    assert result["isError"] is True
+    assert "ghost" in result["content"][0]["text"]
+    assert "not found" in result["content"][0]["text"]
