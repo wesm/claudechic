@@ -21,14 +21,14 @@ class ReviewJob:
     @classmethod
     def from_dict(cls, data: dict) -> ReviewJob:
         return cls(
-            id=data.get("id", ""),
-            git_ref=data.get("git_ref", ""),
-            branch=data.get("branch", ""),
-            agent=data.get("agent", ""),
-            status=data.get("status", ""),
-            verdict=data.get("verdict", ""),
-            addressed=data.get("addressed", False),
-            commit_subject=data.get("commit_subject", ""),
+            id=str(data.get("id", "")),
+            git_ref=data.get("git_ref") or "",
+            branch=data.get("branch") or "",
+            agent=data.get("agent") or "",
+            status=data.get("status") or "",
+            verdict=data.get("verdict") or "",
+            addressed=bool(data.get("addressed", False)),
+            commit_subject=data.get("commit_subject") or "",
         )
 
 
@@ -46,12 +46,12 @@ class ReviewDetail:
     @classmethod
     def from_dict(cls, data: dict) -> ReviewDetail:
         job_data = data.get("job")
-        job = ReviewJob.from_dict(job_data) if job_data else None
+        job = ReviewJob.from_dict(job_data) if isinstance(job_data, dict) else None
         return cls(
-            id=data.get("id", ""),
-            job_id=data.get("job_id", ""),
-            agent=data.get("agent", ""),
-            output=data.get("output", ""),
-            addressed=data.get("addressed", False),
+            id=str(data.get("id", "")),
+            job_id=str(data.get("job_id", "")),
+            agent=data.get("agent") or "",
+            output=data.get("output") or "",
+            addressed=bool(data.get("addressed", False)),
             job=job,
         )

@@ -63,8 +63,10 @@ def list_reviews(
             return []
 
         data = json.loads(result.stdout)
-        if isinstance(data, list):
-            return [ReviewJob.from_dict(item) for item in data[:limit]]
+        # roborev list --json returns {"has_more": bool, "jobs": [...]}
+        jobs = data.get("jobs", data) if isinstance(data, dict) else data
+        if isinstance(jobs, list):
+            return [ReviewJob.from_dict(item) for item in jobs[:limit]]
     except Exception:
         log.debug("Failed to list reviews", exc_info=True)
     return []
