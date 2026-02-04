@@ -76,9 +76,15 @@ def list_reviews(
         data = json.loads(result.stdout)
         if isinstance(data, list):
             jobs = [ReviewJob.from_dict(item) for item in data]
-            # Show only unaddressed reviews by default
-            unaddressed = [j for j in jobs if not j.addressed]
-            return unaddressed[:limit]
+            # Only show actionable reviews: unaddressed + valid status
+            _VISIBLE_STATUSES = {"done", "running", "queued", "pending"}
+            visible = [
+                j
+                for j in jobs
+                if not j.addressed
+                and j.status.lower() in _VISIBLE_STATUSES
+            ]
+            return visible[:limit]
     except Exception:
         log.debug("Failed to list reviews", exc_info=True)
     return []

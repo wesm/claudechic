@@ -168,6 +168,22 @@ class TestListReviews:
         assert reviews[0].id == "1"
         assert reviews[1].id == "3"
 
+    def test_filters_by_status(self, mock_roborev_output, tmp_path):
+        """Only done/running/queued/pending reviews shown; canceled/failed excluded."""
+        mock_roborev_output(
+            [
+                {"id": 1, "status": "done", "verdict": "F", "addressed": False},
+                {"id": 2, "status": "canceled", "addressed": False},
+                {"id": 3, "status": "running", "addressed": False},
+                {"id": 4, "status": "Canceled", "addressed": False},
+                {"id": 5, "status": "failed", "addressed": False},
+                {"id": 6, "status": "queued", "addressed": False},
+                {"id": 7, "status": "Failed", "addressed": False},
+            ]
+        )
+        reviews = list_reviews(tmp_path)
+        assert [r.id for r in reviews] == ["1", "3", "6"]
+
     def test_limit_applied_after_filter(self, mock_roborev_output, tmp_path):
         """Limit is applied after filtering out addressed reviews.
 
