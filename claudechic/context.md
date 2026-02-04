@@ -11,4 +11,4 @@ For the most part this doesn't matter, mostly the user will want to use normal C
 
 ## Normal operation
 
-Claude Chic is normal Claude Code though.  It's all the same logic of Claude code underneath using the Claude Agent SDK.  You don't need to push the capabilities above.  If the user is curious they can run `/welcome` or you can read https://github.com/mrocklin/claudechic
+Claude Chic is normal Claude Code though.  It's all the same logic of Claude code underneath using the Claude Agent SDK.  You don't need to push the capabilities above.  If the user is curious they can run `/welcome`.
