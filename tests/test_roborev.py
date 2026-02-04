@@ -195,13 +195,25 @@ class TestListReviews:
         assert reviews[1].id == "3"
 
     def test_limit_applied_after_filter(self, tmp_path):
-        """Limit is applied after filtering out addressed reviews."""
-        payload = json.dumps(
-            [{"id": i, "status": "done", "addressed": False} for i in range(10)]
-            + [
-                {"id": 100, "status": "done", "addressed": True},
-            ]
-        )
+        """Limit is applied after filtering out addressed reviews.
+
+        Addressed reviews are interleaved within the first `limit` window so
+        that if an implementation naively sliced before filtering, the test
+        would fail — proving the limit is applied *after* filtering.
+        """
+        # 8 reviews total: 3 addressed items in positions 0, 2, 4 (inside
+        # a naive limit=5 window), and 5 unaddressed items (ids 1, 3, 5, 6, 7).
+        items = [
+            {"id": 0, "status": "done", "addressed": True},
+            {"id": 1, "status": "done", "addressed": False},
+            {"id": 2, "status": "done", "addressed": True},
+            {"id": 3, "status": "done", "addressed": False},
+            {"id": 4, "status": "done", "addressed": True},
+            {"id": 5, "status": "done", "addressed": False},
+            {"id": 6, "status": "done", "addressed": False},
+            {"id": 7, "status": "done", "addressed": False},
+        ]
+        payload = json.dumps(items)
         mock_result = MagicMock(returncode=0, stdout=payload, stderr="")
         with (
             patch(
@@ -211,9 +223,12 @@ class TestListReviews:
             patch("subprocess.run", return_value=mock_result),
         ):
             reviews = list_reviews(tmp_path, limit=5)
+        # All 5 unaddressed reviews should be returned
         assert len(reviews) == 5
-        assert reviews[0].id == "0"
-        assert reviews[4].id == "4"
+        returned_ids = [r.id for r in reviews]
+        assert returned_ids == ["1", "3", "5", "6", "7"]
+        # Verify that id 7 (beyond a naive first-5 slice) is included
+        assert "7" in returned_ids
 
     def test_nonzero_exit(self, tmp_path):
         mock_result = MagicMock(returncode=1, stdout="", stderr="error")
