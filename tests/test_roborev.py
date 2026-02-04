@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock
 
 from claudechic.features.roborev.models import ReviewJob, ReviewDetail
 from claudechic.features.roborev.cli import list_reviews, show_review
-from claudechic.widgets.layout.reviews import ReviewItem
+from claudechic.widgets.layout.reviews import ReviewItem, has_running_reviews
 
 
 # =============================================================================
@@ -339,3 +339,40 @@ class TestReviewItemRender:
         from claudechic.widgets.layout.reviews import _SPINNER_FRAMES
 
         assert text.plain[0] in _SPINNER_FRAMES
+
+
+# =============================================================================
+# has_running_reviews
+# =============================================================================
+
+
+class TestHasRunningReviews:
+    def _job(self, status: str = "done") -> ReviewJob:
+        return ReviewJob(id="1", status=status)
+
+    def test_empty_list(self):
+        assert has_running_reviews([]) is False
+
+    def test_all_done(self):
+        assert has_running_reviews([self._job("done"), self._job("done")]) is False
+
+    def test_running(self):
+        assert has_running_reviews([self._job("done"), self._job("running")]) is True
+
+    def test_queued(self):
+        assert has_running_reviews([self._job("queued")]) is True
+
+    def test_pending(self):
+        assert has_running_reviews([self._job("pending")]) is True
+
+    def test_case_insensitive(self):
+        assert has_running_reviews([self._job("Running")]) is True
+        assert has_running_reviews([self._job("QUEUED")]) is True
+
+    def test_none_status(self):
+        """None status should not crash — treated as not running."""
+        job = ReviewJob(id="1", status=None)  # type: ignore[arg-type]
+        assert has_running_reviews([job]) is False
+
+    def test_empty_status(self):
+        assert has_running_reviews([self._job("")]) is False

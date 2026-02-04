@@ -12,6 +12,14 @@ from claudechic.features.roborev.models import ReviewJob
 # Statuses that mean the review is still in progress
 _RUNNING_STATUSES = frozenset({"running", "queued", "pending"})
 
+
+def has_running_reviews(reviews: list[ReviewJob]) -> bool:
+    """Return True if any reviews are still in progress (running/queued/pending).
+
+    Tolerates None or non-string status values.
+    """
+    return any((r.status or "").lower() in _RUNNING_STATUSES for r in reviews)
+
 # Braille spinner frames (same as widgets.primitives.Spinner)
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 

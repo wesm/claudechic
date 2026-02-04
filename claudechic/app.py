@@ -874,11 +874,10 @@ class ChatApp(App):
         self._position_right_sidebar()
 
         # Poll while any reviews are still running
-        has_running = any(
-            r.status.lower() in {"running", "queued", "pending"} for r in reviews
-        )
+        from claudechic.widgets.layout.reviews import has_running_reviews
+
         self._stop_review_polling()
-        if has_running:
+        if has_running_reviews(reviews):
             self._review_poll_timer = self.set_timer(
                 5, lambda: self._refresh_reviews(agent)
             )
