@@ -1,8 +1,16 @@
 """Shared test fixtures."""
 
+from __future__ import annotations
+
+import json
+from typing import Any
+
 import pytest
 from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
+
+from claudechic.features.roborev.models import ReviewJob
+from claudechic.widgets.layout.reviews import ReviewItem
 
 
 async def empty_async_gen():
@@ -81,3 +89,83 @@ def mock_sdk():
             patch("claudechic.app.FileIndex", return_value=mock_file_index)
         )
         yield mock_client
+
+
+@pytest.fixture
+def mock_roborev_output():
+    """Mock roborev CLI subprocess output.
+
+    Returns a callable that patches is_roborev_available and subprocess.run
+    so that the CLI functions receive the given data as JSON stdout.
+
+    Usage::
+
+        def test_example(mock_roborev_output, tmp_path):
+            mock_roborev_output([{"id": 1, "branch": "main"}])
+            reviews = list_reviews(tmp_path)
+    """
+    stack = ExitStack()
+
+    def _mock(data: Any, *, returncode: int = 0, stderr: str = "") -> MagicMock:
+        stdout = json.dumps(data) if not isinstance(data, str) else data
+        mock_result = MagicMock(returncode=returncode, stdout=stdout, stderr=stderr)
+        stack.enter_context(
+            patch(
+                "claudechic.features.roborev.cli.is_roborev_available",
+                return_value=True,
+            )
+        )
+        stack.enter_context(patch("subprocess.run", return_value=mock_result))
+        return mock_result
+
+    yield _mock
+    stack.close()
+
+
+@pytest.fixture
+def mock_roborev_unavailable():
+    """Simulate roborev CLI not being installed."""
+    with patch(
+        "claudechic.features.roborev.cli.is_roborev_available", return_value=False
+    ):
+        yield
+
+
+@pytest.fixture
+def review_job_factory():
+    """Create ReviewJob instances with sensible defaults.
+
+    Usage::
+
+        def test_example(review_job_factory):
+            job = review_job_factory(status="running")
+    """
+
+    def _factory(**overrides: Any) -> ReviewJob:
+        defaults = {
+            "id": "1",
+            "git_ref": "abc1234",
+            "commit_subject": "test",
+            "status": "done",
+            "verdict": "",
+        }
+        defaults.update(overrides)
+        return ReviewJob(**defaults)
+
+    return _factory
+
+
+@pytest.fixture
+def review_item_factory(review_job_factory):
+    """Create ReviewItem instances (unmounted) with sensible defaults.
+
+    Usage::
+
+        def test_example(review_item_factory):
+            item = review_item_factory(verdict="pass")
+    """
+
+    def _factory(**overrides: Any) -> ReviewItem:
+        return ReviewItem(review_job_factory(**overrides))
+
+    return _factory

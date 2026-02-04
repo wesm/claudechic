@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 import claudechic.features.roborev.cli as roborev_cli
-from claudechic.commands import _format_verdict, _is_user_command
+from claudechic.commands import _format_verdict, _is_user_command, _list_reviews_in_chat
 from claudechic.features.roborev.cli import list_reviews, show_review
 from claudechic.features.roborev.models import ReviewDetail, ReviewJob
 from claudechic.widgets.layout.reviews import (
@@ -125,82 +126,49 @@ class TestReviewDetailFromDict:
 
 
 class TestListReviews:
-    def test_bare_array(self, tmp_path):
+    def test_bare_array(self, mock_roborev_output, tmp_path):
         """Parses a bare JSON array from roborev list --json."""
-        payload = json.dumps(
+        mock_roborev_output(
             [
                 {"id": 1, "branch": "main", "status": "done", "verdict": "pass"},
                 {"id": 2, "branch": "main", "status": "running"},
             ]
         )
-        mock_result = MagicMock(returncode=0, stdout=payload, stderr="")
-        with (
-            patch(
-                "claudechic.features.roborev.cli.is_roborev_available",
-                return_value=True,
-            ),
-            patch("subprocess.run", return_value=mock_result),
-        ):
-            reviews = list_reviews(tmp_path, branch="main")
+        reviews = list_reviews(tmp_path, branch="main")
         assert len(reviews) == 2
         assert reviews[0].id == "1"
         assert reviews[0].verdict == "pass"
         assert reviews[1].status == "running"
 
-    def test_empty_array(self, tmp_path):
-        mock_result = MagicMock(returncode=0, stdout="[]", stderr="")
-        with (
-            patch(
-                "claudechic.features.roborev.cli.is_roborev_available",
-                return_value=True,
-            ),
-            patch("subprocess.run", return_value=mock_result),
-        ):
-            reviews = list_reviews(tmp_path)
+    def test_empty_array(self, mock_roborev_output, tmp_path):
+        mock_roborev_output([])
+        reviews = list_reviews(tmp_path)
         assert reviews == []
 
-    def test_roborev_not_available(self, tmp_path):
-        with patch(
-            "claudechic.features.roborev.cli.is_roborev_available", return_value=False
-        ):
-            reviews = list_reviews(tmp_path)
+    def test_roborev_not_available(self, mock_roborev_unavailable, tmp_path):
+        reviews = list_reviews(tmp_path)
         assert reviews == []
 
-    def test_invalid_json(self, tmp_path):
-        mock_result = MagicMock(returncode=0, stdout="not json", stderr="")
-        with (
-            patch(
-                "claudechic.features.roborev.cli.is_roborev_available",
-                return_value=True,
-            ),
-            patch("subprocess.run", return_value=mock_result),
-        ):
-            reviews = list_reviews(tmp_path)
+    def test_invalid_json(self, mock_roborev_output, tmp_path):
+        mock_roborev_output("not json")
+        reviews = list_reviews(tmp_path)
         assert reviews == []
 
-    def test_filters_addressed(self, tmp_path):
+    def test_filters_addressed(self, mock_roborev_output, tmp_path):
         """Only unaddressed reviews are returned."""
-        payload = json.dumps(
+        mock_roborev_output(
             [
                 {"id": 1, "status": "done", "verdict": "F", "addressed": False},
                 {"id": 2, "status": "done", "verdict": "P", "addressed": True},
                 {"id": 3, "status": "running", "addressed": False},
             ]
         )
-        mock_result = MagicMock(returncode=0, stdout=payload, stderr="")
-        with (
-            patch(
-                "claudechic.features.roborev.cli.is_roborev_available",
-                return_value=True,
-            ),
-            patch("subprocess.run", return_value=mock_result),
-        ):
-            reviews = list_reviews(tmp_path)
+        reviews = list_reviews(tmp_path)
         assert len(reviews) == 2
         assert reviews[0].id == "1"
         assert reviews[1].id == "3"
 
-    def test_limit_applied_after_filter(self, tmp_path):
+    def test_limit_applied_after_filter(self, mock_roborev_output, tmp_path):
         """Limit is applied after filtering out addressed reviews.
 
         Addressed reviews are interleaved within the first `limit` window so
@@ -209,26 +177,19 @@ class TestListReviews:
         """
         # 8 reviews total: 3 addressed items in positions 0, 2, 4 (inside
         # a naive limit=5 window), and 5 unaddressed items (ids 1, 3, 5, 6, 7).
-        items = [
-            {"id": 0, "status": "done", "addressed": True},
-            {"id": 1, "status": "done", "addressed": False},
-            {"id": 2, "status": "done", "addressed": True},
-            {"id": 3, "status": "done", "addressed": False},
-            {"id": 4, "status": "done", "addressed": True},
-            {"id": 5, "status": "done", "addressed": False},
-            {"id": 6, "status": "done", "addressed": False},
-            {"id": 7, "status": "done", "addressed": False},
-        ]
-        payload = json.dumps(items)
-        mock_result = MagicMock(returncode=0, stdout=payload, stderr="")
-        with (
-            patch(
-                "claudechic.features.roborev.cli.is_roborev_available",
-                return_value=True,
-            ),
-            patch("subprocess.run", return_value=mock_result),
-        ):
-            reviews = list_reviews(tmp_path, limit=5)
+        mock_roborev_output(
+            [
+                {"id": 0, "status": "done", "addressed": True},
+                {"id": 1, "status": "done", "addressed": False},
+                {"id": 2, "status": "done", "addressed": True},
+                {"id": 3, "status": "done", "addressed": False},
+                {"id": 4, "status": "done", "addressed": True},
+                {"id": 5, "status": "done", "addressed": False},
+                {"id": 6, "status": "done", "addressed": False},
+                {"id": 7, "status": "done", "addressed": False},
+            ]
+        )
+        reviews = list_reviews(tmp_path, limit=5)
         # All 5 unaddressed reviews should be returned
         assert len(reviews) == 5
         returned_ids = [r.id for r in reviews]
@@ -236,16 +197,9 @@ class TestListReviews:
         # Verify that id 7 (beyond a naive first-5 slice) is included
         assert "7" in returned_ids
 
-    def test_nonzero_exit(self, tmp_path):
-        mock_result = MagicMock(returncode=1, stdout="", stderr="error")
-        with (
-            patch(
-                "claudechic.features.roborev.cli.is_roborev_available",
-                return_value=True,
-            ),
-            patch("subprocess.run", return_value=mock_result),
-        ):
-            reviews = list_reviews(tmp_path)
+    def test_nonzero_exit(self, mock_roborev_output, tmp_path):
+        mock_roborev_output([], returncode=1, stderr="error")
+        reviews = list_reviews(tmp_path)
         assert reviews == []
 
 
@@ -255,8 +209,8 @@ class TestListReviews:
 
 
 class TestShowReview:
-    def test_returns_detail(self, tmp_path):
-        payload = json.dumps(
+    def test_returns_detail(self, mock_roborev_output, tmp_path):
+        mock_roborev_output(
             {
                 "id": 99,
                 "job_id": 42,
@@ -265,30 +219,15 @@ class TestShowReview:
                 "job": {"id": 42, "verdict": "pass", "branch": "main"},
             }
         )
-        mock_result = MagicMock(returncode=0, stdout=payload, stderr="")
-        with (
-            patch(
-                "claudechic.features.roborev.cli.is_roborev_available",
-                return_value=True,
-            ),
-            patch("subprocess.run", return_value=mock_result),
-        ):
-            detail = show_review("42", tmp_path)
+        detail = show_review("42", tmp_path)
         assert detail is not None
         assert detail.id == "99"
         assert detail.job is not None
         assert detail.job.verdict == "pass"
 
-    def test_not_found(self, tmp_path):
-        mock_result = MagicMock(returncode=1, stdout="", stderr="not found")
-        with (
-            patch(
-                "claudechic.features.roborev.cli.is_roborev_available",
-                return_value=True,
-            ),
-            patch("subprocess.run", return_value=mock_result),
-        ):
-            detail = show_review("999", tmp_path)
+    def test_not_found(self, mock_roborev_output, tmp_path):
+        mock_roborev_output("", returncode=1, stderr="not found")
+        detail = show_review("999", tmp_path)
         assert detail is None
 
 
@@ -297,54 +236,93 @@ class TestShowReview:
 # =============================================================================
 
 
-def _make_item(verdict: str = "", status: str = "done", **kwargs) -> ReviewItem:
-    """Create a ReviewItem without mounting it."""
-    data = {
-        "id": 1,
-        "git_ref": "abc1234",
-        "commit_subject": "test",
-        "status": status,
-        "verdict": verdict,
-        **kwargs,
-    }
-    return ReviewItem(ReviewJob.from_dict(data))
-
-
 class TestReviewItemRender:
-    def test_pass_long(self):
-        text = _make_item(verdict="pass").render()
-        assert text.plain.startswith("P ")
+    @pytest.mark.parametrize(
+        "params, check",
+        [
+            pytest.param({"verdict": "pass"}, ("startswith", "P "), id="pass-long"),
+            pytest.param({"verdict": "P"}, ("startswith", "P "), id="pass-short"),
+            pytest.param({"verdict": "fail"}, ("startswith", "F "), id="fail-long"),
+            pytest.param({"verdict": "F"}, ("startswith", "F "), id="fail-short"),
+            pytest.param({"verdict": ""}, ("startswith", "? "), id="unknown-verdict"),
+            pytest.param({"verdict": "P"}, ("contains", "#1"), id="job-id-shown"),
+            pytest.param(
+                {"verdict": "", "status": "running"},
+                ("spinner",),
+                id="running-spinner",
+            ),
+            pytest.param(
+                {"verdict": "", "status": "queued"},
+                ("spinner",),
+                id="queued-spinner",
+            ),
+            pytest.param(
+                {"verdict": "P", "id": "0"},
+                ("contains", "#0 "),
+                id="zero-str-id-shown",
+            ),
+            pytest.param(
+                {"verdict": "P", "id": ""},
+                ("contains", "#? "),
+                id="empty-id-fallback",
+            ),
+        ],
+    )
+    def test_render_output(self, review_item_factory, params, check):
+        text = review_item_factory(**params).render()
+        if check[0] == "startswith":
+            assert text.plain.startswith(check[1])
+        elif check[0] == "contains":
+            assert check[1] in text.plain
+        elif check[0] == "spinner":
+            assert text.plain[0] in _SPINNER_FRAMES
 
-    def test_pass_short(self):
-        text = _make_item(verdict="P").render()
-        assert text.plain.startswith("P ")
+    def test_non_string_status_renders(self, review_item_factory):
+        """Non-string status should not crash rendering."""
+        text = review_item_factory(status=123, verdict="P").render()  # type: ignore[arg-type]
+        assert "#1 " in text.plain
 
-    def test_fail_long(self):
-        text = _make_item(verdict="fail").render()
-        assert text.plain.startswith("F ")
+    def test_none_verdict_renders(self, review_item_factory):
+        """None verdict should not crash rendering."""
+        text = review_item_factory(verdict=None).render()  # type: ignore[arg-type]
+        assert "? " in text.plain
 
-    def test_fail_short(self):
-        text = _make_item(verdict="F").render()
-        assert text.plain.startswith("F ")
+    def test_non_string_verdict_renders(self, review_item_factory):
+        """Non-string verdict should not crash rendering."""
+        text = review_item_factory(verdict=42).render()  # type: ignore[arg-type]
+        assert "? " in text.plain
 
-    def test_unknown_verdict(self):
-        text = _make_item(verdict="").render()
-        assert text.plain.startswith("? ")
-
-    def test_job_id_shown(self):
-        text = _make_item(verdict="P").render()
-        assert "#1" in text.plain
-
-    def test_running_shows_spinner(self):
-        """Running status shows a spinner frame, not a verdict."""
-        item = _make_item(verdict="", status="running")
+    def test_int_zero_id_shown(self):
+        """Integer 0 id must render as #0, not #? (falsy-int regression guard)."""
+        job = ReviewJob(id=0, verdict="P")  # type: ignore[arg-type]
+        item = ReviewItem(job)
         text = item.render()
-        assert text.plain[0] in _SPINNER_FRAMES
+        assert "#0 " in text.plain
 
-    def test_queued_shows_spinner(self):
-        item = _make_item(verdict="", status="queued")
+    def test_none_id_fallback(self):
+        """None id must render as #? (null regression guard)."""
+        job = ReviewJob(id=None, verdict="P")  # type: ignore[arg-type]
+        item = ReviewItem(job)
         text = item.render()
-        assert text.plain[0] in _SPINNER_FRAMES
+        assert "#? " in text.plain
+
+    def test_render_via_from_dict(self):
+        """Render test using ReviewJob.from_dict to cover the real ingestion path."""
+        job = ReviewJob.from_dict(
+            {
+                "id": 5,
+                "git_ref": "deadbeef123",
+                "commit_subject": "Add feature",
+                "status": "done",
+                "verdict": "pass",
+            }
+        )
+        item = ReviewItem(job)
+        text = item.render()
+        assert text.plain.startswith("P ")
+        assert "#5 " in text.plain
+        assert "deadbee" in text.plain
+        assert "Add feature" in text.plain
 
 
 # =============================================================================
@@ -353,40 +331,37 @@ class TestReviewItemRender:
 
 
 class TestHasRunningReviews:
-    def _job(self, status: str = "done") -> ReviewJob:
-        return ReviewJob(id="1", status=status)
-
     def test_empty_list(self):
         assert has_running_reviews([]) is False
 
-    def test_all_done(self):
-        assert has_running_reviews([self._job("done"), self._job("done")]) is False
+    def test_all_done(self, review_job_factory):
+        jobs = [review_job_factory(status="done"), review_job_factory(status="done")]
+        assert has_running_reviews(jobs) is False
 
-    def test_running(self):
-        assert has_running_reviews([self._job("done"), self._job("running")]) is True
+    def test_running(self, review_job_factory):
+        jobs = [review_job_factory(status="done"), review_job_factory(status="running")]
+        assert has_running_reviews(jobs) is True
 
-    def test_queued(self):
-        assert has_running_reviews([self._job("queued")]) is True
+    def test_queued(self, review_job_factory):
+        assert has_running_reviews([review_job_factory(status="queued")]) is True
 
-    def test_pending(self):
-        assert has_running_reviews([self._job("pending")]) is True
+    def test_pending(self, review_job_factory):
+        assert has_running_reviews([review_job_factory(status="pending")]) is True
 
-    def test_case_insensitive(self):
-        assert has_running_reviews([self._job("Running")]) is True
-        assert has_running_reviews([self._job("QUEUED")]) is True
+    def test_case_insensitive(self, review_job_factory):
+        assert has_running_reviews([review_job_factory(status="Running")]) is True
+        assert has_running_reviews([review_job_factory(status="QUEUED")]) is True
 
-    def test_none_status(self):
+    def test_none_status(self, review_job_factory):
         """None status should not crash — treated as not running."""
-        job = ReviewJob(id="1", status=None)  # type: ignore[arg-type]
-        assert has_running_reviews([job]) is False
+        assert has_running_reviews([review_job_factory(status=None)]) is False  # type: ignore[arg-type]
 
-    def test_empty_status(self):
-        assert has_running_reviews([self._job("")]) is False
+    def test_empty_status(self, review_job_factory):
+        assert has_running_reviews([review_job_factory(status="")]) is False
 
-    def test_non_string_status(self):
+    def test_non_string_status(self, review_job_factory):
         """Truthy non-string status should not crash — treated as not running."""
-        job = ReviewJob(id="1", status=123)  # type: ignore[arg-type]
-        assert has_running_reviews([job]) is False
+        assert has_running_reviews([review_job_factory(status=123)]) is False  # type: ignore[arg-type]
 
 
 # =============================================================================
@@ -433,15 +408,15 @@ class TestIsUserCommand:
 
 
 class TestReviewItemJobId:
-    def test_zero_id_shown(self):
+    def test_zero_id_shown(self, review_item_factory):
         """Job ID 0 should render as #0, not #?."""
-        item = _make_item(verdict="P", id=0)
+        item = review_item_factory(verdict="P", id=0)
         text = item.render()
         assert "#0 " in text.plain
 
-    def test_empty_id_shows_fallback(self):
+    def test_empty_id_shows_fallback(self, review_item_factory):
         """Empty/missing ID should render as #?."""
-        item = _make_item(verdict="P", id=None)
+        item = review_item_factory(verdict="P", id=None)
         text = item.render()
         assert "#? " in text.plain
 
@@ -512,17 +487,128 @@ class TestFormatVerdict:
 
 
 # =============================================================================
+# Table escaping in _list_reviews_in_chat
+# =============================================================================
+
+
+class TestListReviewsInChatEscaping:
+    """Ensure pipes, newlines, and non-string commit_subject don't break the table."""
+
+    @staticmethod
+    def _make_mock_app() -> MagicMock:
+        """Build a mock app whose _agent.cwd and _chat_view are wired up."""
+        app = MagicMock()
+        app._agent.cwd = "/fake"
+        chat_view = MagicMock()
+        mounted_widgets: list = []
+        chat_view.mount = lambda msg: mounted_widgets.append(msg)
+        app._chat_view = chat_view
+        app._mounted_widgets = mounted_widgets
+        return app
+
+    @pytest.mark.asyncio
+    async def test_pipe_in_subject_escaped(self):
+        """Pipe characters in commit_subject must be escaped in the table."""
+        reviews = [
+            ReviewJob(
+                id="1",
+                git_ref="abc1234",
+                commit_subject="foo | bar",
+                status="done",
+                verdict="pass",
+                agent="bot",
+            )
+        ]
+        app = self._make_mock_app()
+        with (
+            patch(
+                "claudechic.features.roborev.get_current_branch",
+                return_value="main",
+            ),
+            patch("claudechic.features.roborev.list_reviews", return_value=reviews),
+        ):
+            await _list_reviews_in_chat(app)
+
+        table = app._mounted_widgets[0].get_raw_content()
+        # The pipe must be escaped so it doesn't split the table cell
+        assert r"foo \| bar" in table
+
+    @pytest.mark.asyncio
+    async def test_newline_in_agent_normalized(self):
+        """Newlines in agent name must be replaced with spaces."""
+        reviews = [
+            ReviewJob(
+                id="2",
+                git_ref="def5678",
+                commit_subject="ok",
+                status="done",
+                verdict="fail",
+                agent="line1\nline2",
+            )
+        ]
+        app = self._make_mock_app()
+        with (
+            patch(
+                "claudechic.features.roborev.get_current_branch",
+                return_value="main",
+            ),
+            patch("claudechic.features.roborev.list_reviews", return_value=reviews),
+        ):
+            await _list_reviews_in_chat(app)
+
+        table = app._mounted_widgets[0].get_raw_content()
+        # No raw newline should appear inside a table row
+        for line in table.split("\n"):
+            if line.startswith("|") and "2" in line:
+                assert "\n" not in line
+                assert "line1 line2" in line
+
+    @pytest.mark.asyncio
+    async def test_non_string_commit_subject(self):
+        """Non-string commit_subject (e.g. int from malformed JSON) doesn't crash."""
+        job = ReviewJob.from_dict(
+            {
+                "id": 3,
+                "git_ref": "1234567",
+                "commit_subject": 12345,
+                "status": "done",
+                "verdict": "pass",
+                "agent": "bot",
+            }
+        )
+        reviews = [job]
+        app = self._make_mock_app()
+        with (
+            patch(
+                "claudechic.features.roborev.get_current_branch",
+                return_value="main",
+            ),
+            patch("claudechic.features.roborev.list_reviews", return_value=reviews),
+        ):
+            await _list_reviews_in_chat(app)
+
+        table = app._mounted_widgets[0].get_raw_content()
+        # Should contain the coerced subject as a string
+        assert "12345" in table
+
+
+# =============================================================================
 # is_roborev_available TTL cache
 # =============================================================================
 
 
 class TestIsRoborevAvailableCache:
+    @pytest.fixture(autouse=True)
+    def _reset_cache(self):
+        """Safely reset roborev cache state via patch (auto-restores on teardown)."""
+        with (
+            patch.object(roborev_cli, "_roborev_available", None),
+            patch.object(roborev_cli, "_roborev_checked_at", 0.0),
+        ):
+            yield
+
     def test_caches_within_ttl(self):
         """Result is cached — shutil.which is not called again within TTL."""
-        # Reset cache state
-        roborev_cli._roborev_available = None
-        roborev_cli._roborev_checked_at = 0.0
-
         with patch(
             "claudechic.features.roborev.cli.shutil.which",
             return_value="/usr/bin/roborev",
@@ -531,15 +617,8 @@ class TestIsRoborevAvailableCache:
             assert roborev_cli.is_roborev_available() is True
             assert mock_which.call_count == 1  # cached, not called twice
 
-        # Clean up
-        roborev_cli._roborev_available = None
-        roborev_cli._roborev_checked_at = 0.0
-
     def test_refreshes_after_ttl(self):
         """Cache refreshes after TTL expires."""
-        roborev_cli._roborev_available = None
-        roborev_cli._roborev_checked_at = 0.0
-
         with (
             patch(
                 "claudechic.features.roborev.cli.shutil.which",
@@ -558,6 +637,3 @@ class TestIsRoborevAvailableCache:
                 roborev_cli.is_roborev_available() is True
             )  # monotonic=61.0, expired, calls which again
             assert mock_which.call_count == 2
-
-        roborev_cli._roborev_available = None
-        roborev_cli._roborev_checked_at = 0.0

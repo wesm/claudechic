@@ -1,5 +1,7 @@
 """App-level UI tests without SDK dependency."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from claudechic.app import ChatApp
@@ -718,3 +720,58 @@ async def test_escape_closes_sidebar_overlay(mock_sdk):
             "Overlay state should be False after escape"
         )
         assert sidebar.display is False, "Sidebar should be hidden after escape"
+
+
+# =============================================================================
+# Agent-scoped review polling (_stop_review_polling)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_stop_review_polling_ignores_other_agent(mock_sdk):
+    """Stopping polling for agent B does not cancel agent A's timer."""
+    app = ChatApp()
+    async with app.run_test():
+        # Simulate agent A owning the poll timer
+        fake_timer = MagicMock()
+        app._review_poll_timer = fake_timer
+        app._review_poll_agent_id = "agent-a"
+
+        # Stopping for a different agent should be a no-op
+        app._stop_review_polling("agent-b")
+
+        fake_timer.stop.assert_not_called()
+        assert app._review_poll_timer is fake_timer
+        assert app._review_poll_agent_id == "agent-a"
+
+
+@pytest.mark.asyncio
+async def test_stop_review_polling_stops_own_agent(mock_sdk):
+    """Stopping polling for the owning agent cancels the timer."""
+    app = ChatApp()
+    async with app.run_test():
+        fake_timer = MagicMock()
+        app._review_poll_timer = fake_timer
+        app._review_poll_agent_id = "agent-a"
+
+        app._stop_review_polling("agent-a")
+
+        fake_timer.stop.assert_called_once()
+        assert app._review_poll_timer is None
+        assert app._review_poll_agent_id is None
+
+
+@pytest.mark.asyncio
+async def test_stop_review_polling_unconditional(mock_sdk):
+    """Stopping polling with no agent_id cancels unconditionally."""
+    app = ChatApp()
+    async with app.run_test():
+        fake_timer = MagicMock()
+        app._review_poll_timer = fake_timer
+        app._review_poll_agent_id = "agent-a"
+
+        app._stop_review_polling()  # No agent_id
+
+        fake_timer.stop.assert_called_once()
+        assert app._review_poll_timer is None
+        assert app._review_poll_agent_id is None
