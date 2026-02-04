@@ -184,6 +184,19 @@ class TestListReviews:
         reviews = list_reviews(tmp_path)
         assert [r.id for r in reviews] == ["1", "3", "6"]
 
+    def test_none_or_missing_status_excluded(self, mock_roborev_output, tmp_path):
+        """Reviews with None or missing status are excluded without crashing."""
+        mock_roborev_output(
+            [
+                {"id": 1, "status": "done", "addressed": False},
+                {"id": 2, "addressed": False},  # missing status -> ""
+                {"id": 3, "status": None, "addressed": False},
+                {"id": 4, "status": "running", "addressed": False},
+            ]
+        )
+        reviews = list_reviews(tmp_path)
+        assert [r.id for r in reviews] == ["1", "4"]
+
     def test_limit_applied_after_filter(self, mock_roborev_output, tmp_path):
         """Limit is applied after filtering out addressed reviews.
 

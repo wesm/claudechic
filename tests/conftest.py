@@ -142,7 +142,7 @@ def review_job_factory():
     """
 
     def _factory(**overrides: Any) -> ReviewJob:
-        defaults = {
+        defaults: dict[str, Any] = {
             "id": "1",
             "git_ref": "abc1234",
             "commit_subject": "test",

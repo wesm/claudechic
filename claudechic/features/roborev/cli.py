@@ -81,8 +81,7 @@ def list_reviews(
             visible = [
                 j
                 for j in jobs
-                if not j.addressed
-                and j.status.lower() in _VISIBLE_STATUSES
+                if not j.addressed and str(j.status or "").lower() in _VISIBLE_STATUSES
             ]
             return visible[:limit]
     except Exception:
