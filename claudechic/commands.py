@@ -755,8 +755,8 @@ async def _list_reviews_in_chat(app: "ChatApp") -> None:
 
     lines = [
         f"**Reviews** ({branch or 'all branches'})\n",
-        "| Verdict | SHA | Subject | Agent | Status |",
-        "|---------|-----|---------|-------|--------|",
+        "| Job | Verdict | SHA | Subject | Agent | Status |",
+        "|-----|---------|-----|---------|-------|--------|",
     ]
     for r in reviews:
         verdict = {"p": "P", "pass": "P", "f": "F", "fail": "F"}.get(
@@ -764,7 +764,7 @@ async def _list_reviews_in_chat(app: "ChatApp") -> None:
         )
         sha = r.git_ref[:7] if r.git_ref else ""
         subject = r.commit_subject[:30] + ("…" if len(r.commit_subject) > 30 else "")
-        lines.append(f"| {verdict} | `{sha}` | {subject} | {r.agent} | {r.status} |")
+        lines.append(f"| {r.id} | {verdict} | `{sha}` | {subject} | {r.agent} | {r.status} |")
     lines.append("\nUse `/reviews <job_id>` to see detail.")
 
     msg = ChatMessage("\n".join(lines))

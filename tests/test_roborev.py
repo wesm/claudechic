@@ -325,6 +325,10 @@ class TestReviewItemRender:
         text = _make_item(verdict="").render()
         assert text.plain.startswith("? ")
 
+    def test_job_id_shown(self):
+        text = _make_item(verdict="P").render()
+        assert "#1" in text.plain
+
     def test_running_shows_spinner(self):
         """Running status shows a spinner frame, not a verdict."""
         item = _make_item(verdict="", status="running")
