@@ -376,3 +376,8 @@ class TestHasRunningReviews:
 
     def test_empty_status(self):
         assert has_running_reviews([self._job("")]) is False
+
+    def test_non_string_status(self):
+        """Truthy non-string status should not crash — treated as not running."""
+        job = ReviewJob(id="1", status=123)  # type: ignore[arg-type]
+        assert has_running_reviews([job]) is False
