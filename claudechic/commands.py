@@ -730,8 +730,7 @@ async def _list_reviews_in_chat(app: "ChatApp") -> None:
     """List reviews as a markdown table in the chat."""
     import asyncio
 
-    from claudechic.features.roborev import list_reviews
-    from claudechic.features.roborev.cli import get_current_branch
+    from claudechic.features.roborev import get_current_branch, list_reviews
     from claudechic.widgets import ChatMessage
 
     agent = app._agent
@@ -764,7 +763,7 @@ async def _list_reviews_in_chat(app: "ChatApp") -> None:
     ]
     for r in reviews:
         verdict = {"p": "P", "pass": "P", "f": "F", "fail": "F"}.get(
-            r.verdict.lower(), "…"
+            str(r.verdict or "").lower(), "…"
         )
         sha = r.git_ref[:7] if r.git_ref else ""
         subject = r.commit_subject[:30] + ("…" if len(r.commit_subject) > 30 else "")

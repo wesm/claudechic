@@ -865,7 +865,7 @@ class ChatApp(App):
         """Fetch roborev reviews for the agent's branch and update the sidebar panel."""
         import asyncio
 
-        from claudechic.features.roborev.cli import get_current_branch, list_reviews
+        from claudechic.features.roborev import get_current_branch, list_reviews
 
         cwd = agent.cwd
         branch = await asyncio.to_thread(get_current_branch, cwd)
@@ -873,11 +873,11 @@ class ChatApp(App):
         self.review_panel.update_reviews(reviews)
         self._position_right_sidebar()
 
-        # Poll while any reviews are still running
+        # Poll while any reviews are still running (only if agent is still active)
         from claudechic.widgets.layout.reviews import has_running_reviews
 
         self._stop_review_polling()
-        if has_running_reviews(reviews):
+        if has_running_reviews(reviews) and agent is self._agent:
             self._review_poll_timer = self.set_timer(
                 5, lambda: self._refresh_reviews(agent)
             )

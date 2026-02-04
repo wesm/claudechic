@@ -56,7 +56,7 @@ class ReviewItem(Static):
 
     @property
     def _is_running(self) -> bool:
-        return self.review.status.lower() in _RUNNING_STATUSES
+        return _normalize_status(self.review.status) in _RUNNING_STATUSES
 
     def on_mount(self) -> None:
         if self._is_running:
@@ -73,11 +73,12 @@ class ReviewItem(Static):
 
     def render(self) -> Text:
         # Verdict icon: P green, F red, spinner for running
+        verdict = str(self.review.verdict or "").upper()
         if self._is_running:
             icon = (_SPINNER_FRAMES[self._spinner_frame] + " ", "yellow")
-        elif self.review.verdict.upper() in ("P", "PASS"):
+        elif verdict in ("P", "PASS"):
             icon = ("P ", "green")
-        elif self.review.verdict.upper() in ("F", "FAIL"):
+        elif verdict in ("F", "FAIL"):
             icon = ("F ", "red")
         else:
             icon = ("? ", "dim")
@@ -149,7 +150,12 @@ class ReviewPanel(Widget):
             self.add_class("hidden")
 
     def update_reviews(self, reviews: list[ReviewJob]) -> None:
-        """Replace reviews with new list. Visibility controlled by set_visible()."""
+        """Replace reviews with new list. Visibility controlled by set_visible().
+
+        Note: This recreates all ReviewItem widgets, which resets spinner
+        animation state for running reviews.  Acceptable since polls are
+        infrequent (every 5s) and the spinner restarts instantly.
+        """
         self._reviews = reviews
         # Remove old items
         for item in self.query(ReviewItem):

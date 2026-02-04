@@ -450,3 +450,38 @@ class TestReviewItemJobId:
         item = _make_item(verdict="P", id=None)
         text = item.render()
         assert "#? " in text.plain
+
+    def test_explicit_empty_string_id(self):
+        """Explicit empty string ID should render as #?."""
+        job = ReviewJob(id="", verdict="P", git_ref="abc1234", commit_subject="test")
+        item = ReviewItem(job)
+        text = item.render()
+        assert "#? " in text.plain
+
+
+# =============================================================================
+# ReviewItem — non-string status/verdict resilience
+# =============================================================================
+
+
+class TestReviewItemNonStringFields:
+    def test_non_string_status_renders(self):
+        """Non-string status should not crash rendering."""
+        job = ReviewJob(id="1", status=123, verdict="P", git_ref="abc1234", commit_subject="test")  # type: ignore[arg-type]
+        item = ReviewItem(job)
+        text = item.render()
+        assert "#1 " in text.plain
+
+    def test_none_verdict_renders(self):
+        """None verdict should not crash rendering."""
+        job = ReviewJob(id="1", verdict=None, git_ref="abc1234", commit_subject="test")  # type: ignore[arg-type]
+        item = ReviewItem(job)
+        text = item.render()
+        assert "? " in text.plain
+
+    def test_non_string_verdict_renders(self):
+        """Non-string verdict should not crash rendering."""
+        job = ReviewJob(id="1", verdict=42, git_ref="abc1234", commit_subject="test")  # type: ignore[arg-type]
+        item = ReviewItem(job)
+        text = item.render()
+        assert "? " in text.plain
