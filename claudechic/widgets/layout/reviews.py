@@ -82,8 +82,8 @@ class ReviewItem(Static):
         else:
             icon = ("? ", "dim")
 
-        # Job ID
-        job_id = self.review.id or "?"
+        # Job ID (check for None and empty — 0 is a valid ID)
+        job_id = "?" if self.review.id is None or self.review.id == "" else self.review.id
 
         # Short SHA (first 7 chars of git_ref)
         sha = self.review.git_ref[:7] if self.review.git_ref else "???????"

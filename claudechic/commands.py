@@ -318,16 +318,20 @@ def _is_user_command(cmd_name: str, cwd: Path) -> bool:
     name = cmd_name.lstrip("/")
     home = Path.home()
 
-    # Skill directories use hyphens on disk, but colons in slash commands
+    # Skill directories typically use hyphens on disk, but colons in slash commands
     # e.g. /roborev:fix -> ~/.claude/skills/roborev-fix/SKILL.md
-    dir_name = name.replace(":", "-")
+    # Check both forms for backward compatibility with any colon-named directories.
+    skill_names = {name}
+    if ":" in name:
+        skill_names.add(name.replace(":", "-"))
 
     paths = [
         home / ".claude" / "commands" / f"{name}.md",  # global command
         cwd / ".claude" / "commands" / f"{name}.md",  # project command
-        home / ".claude" / "skills" / dir_name / "SKILL.md",  # global skill
-        cwd / ".claude" / "skills" / dir_name / "SKILL.md",  # project skill
     ]
+    for sname in skill_names:
+        paths.append(home / ".claude" / "skills" / sname / "SKILL.md")  # global skill
+        paths.append(cwd / ".claude" / "skills" / sname / "SKILL.md")  # project skill
     return any(p.exists() for p in paths)
 
 

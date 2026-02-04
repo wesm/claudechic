@@ -385,3 +385,68 @@ class TestHasRunningReviews:
         """Truthy non-string status should not crash — treated as not running."""
         job = ReviewJob(id="1", status=123)  # type: ignore[arg-type]
         assert has_running_reviews([job]) is False
+
+
+# =============================================================================
+# _is_user_command — colon-to-hyphen skill lookup
+# =============================================================================
+
+
+class TestIsUserCommand:
+    def test_hyphenated_skill_dir(self, tmp_path):
+        """Colon command matches hyphenated skill directory."""
+        from claudechic.commands import _is_user_command
+
+        skill_dir = tmp_path / ".claude" / "skills" / "roborev-fix"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# skill")
+
+        # _is_user_command checks cwd/.claude/skills/... so pass tmp_path as cwd
+        assert _is_user_command("/roborev:fix", tmp_path) is True
+
+    def test_colon_skill_dir(self, tmp_path):
+        """Colon command also matches colon-named directory if it exists."""
+        from claudechic.commands import _is_user_command
+
+        skill_dir = tmp_path / ".claude" / "skills" / "roborev:fix"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# skill")
+
+        assert _is_user_command("/roborev:fix", tmp_path) is True
+
+    def test_no_skill_dir(self, tmp_path):
+        """Returns False when no matching skill directory exists."""
+        from claudechic.commands import _is_user_command
+
+        # Patch Path.home so it doesn't find real skills in ~/.claude/skills/
+        with patch("claudechic.commands.Path.home", return_value=tmp_path / "fakehome"):
+            assert _is_user_command("/roborev:fix", tmp_path) is False
+
+    def test_simple_skill_no_colon(self, tmp_path):
+        """Non-colon skill still works normally."""
+        from claudechic.commands import _is_user_command
+
+        skill_dir = tmp_path / ".claude" / "skills" / "myplugin"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# skill")
+
+        assert _is_user_command("/myplugin", tmp_path) is True
+
+
+# =============================================================================
+# ReviewItem — job ID edge cases
+# =============================================================================
+
+
+class TestReviewItemJobId:
+    def test_zero_id_shown(self):
+        """Job ID 0 should render as #0, not #?."""
+        item = _make_item(verdict="P", id=0)
+        text = item.render()
+        assert "#0 " in text.plain
+
+    def test_empty_id_shows_fallback(self):
+        """Empty/missing ID should render as #?."""
+        item = _make_item(verdict="P", id=None)
+        text = item.render()
+        assert "#? " in text.plain
