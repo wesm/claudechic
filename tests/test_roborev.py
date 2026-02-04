@@ -5,9 +5,15 @@ from __future__ import annotations
 import json
 from unittest.mock import patch, MagicMock
 
-from claudechic.features.roborev.models import ReviewJob, ReviewDetail
+import claudechic.features.roborev.cli as roborev_cli
+from claudechic.commands import _format_verdict, _is_user_command
 from claudechic.features.roborev.cli import list_reviews, show_review
-from claudechic.widgets.layout.reviews import ReviewItem, has_running_reviews
+from claudechic.features.roborev.models import ReviewDetail, ReviewJob
+from claudechic.widgets.layout.reviews import (
+    ReviewItem,
+    _SPINNER_FRAMES,
+    has_running_reviews,
+)
 
 
 # =============================================================================
@@ -333,15 +339,11 @@ class TestReviewItemRender:
         """Running status shows a spinner frame, not a verdict."""
         item = _make_item(verdict="", status="running")
         text = item.render()
-        from claudechic.widgets.layout.reviews import _SPINNER_FRAMES
-
         assert text.plain[0] in _SPINNER_FRAMES
 
     def test_queued_shows_spinner(self):
         item = _make_item(verdict="", status="queued")
         text = item.render()
-        from claudechic.widgets.layout.reviews import _SPINNER_FRAMES
-
         assert text.plain[0] in _SPINNER_FRAMES
 
 
@@ -395,8 +397,6 @@ class TestHasRunningReviews:
 class TestIsUserCommand:
     def test_hyphenated_skill_dir(self, tmp_path):
         """Colon command matches hyphenated skill directory."""
-        from claudechic.commands import _is_user_command
-
         skill_dir = tmp_path / ".claude" / "skills" / "roborev-fix"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("# skill")
@@ -406,8 +406,6 @@ class TestIsUserCommand:
 
     def test_colon_skill_dir(self, tmp_path):
         """Colon command also matches colon-named directory if it exists."""
-        from claudechic.commands import _is_user_command
-
         skill_dir = tmp_path / ".claude" / "skills" / "roborev:fix"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("# skill")
@@ -416,16 +414,12 @@ class TestIsUserCommand:
 
     def test_no_skill_dir(self, tmp_path):
         """Returns False when no matching skill directory exists."""
-        from claudechic.commands import _is_user_command
-
         # Patch Path.home so it doesn't find real skills in ~/.claude/skills/
         with patch("claudechic.commands.Path.home", return_value=tmp_path / "fakehome"):
             assert _is_user_command("/roborev:fix", tmp_path) is False
 
     def test_simple_skill_no_colon(self, tmp_path):
         """Non-colon skill still works normally."""
-        from claudechic.commands import _is_user_command
-
         skill_dir = tmp_path / ".claude" / "skills" / "myplugin"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("# skill")
@@ -492,27 +486,59 @@ class TestReviewItemNonStringFields:
 # =============================================================================
 
 
-class TestVerdictCoercionInTable:
-    """Test the verdict lookup used by _list_reviews_in_chat."""
-
-    # Extract the same logic used in commands.py to test it in isolation
-    @staticmethod
-    def _coerce_verdict(verdict: object) -> str:
-        return {"p": "P", "pass": "P", "f": "F", "fail": "F"}.get(
-            str(verdict or "").lower(), "…"
-        )
+class TestFormatVerdict:
+    """Test _format_verdict from commands.py (used by /reviews table)."""
 
     def test_normal_pass(self):
-        assert self._coerce_verdict("pass") == "P"
+        assert _format_verdict("pass") == "P"
 
     def test_normal_fail(self):
-        assert self._coerce_verdict("F") == "F"
+        assert _format_verdict("F") == "F"
 
     def test_none_verdict(self):
-        assert self._coerce_verdict(None) == "…"
+        assert _format_verdict(None) == "…"
 
     def test_int_verdict(self):
-        assert self._coerce_verdict(42) == "…"
+        assert _format_verdict(42) == "…"
 
     def test_empty_string(self):
-        assert self._coerce_verdict("") == "…"
+        assert _format_verdict("") == "…"
+
+
+# =============================================================================
+# is_roborev_available TTL cache
+# =============================================================================
+
+
+class TestIsRoborevAvailableCache:
+    def test_caches_within_ttl(self):
+        """Result is cached — shutil.which is not called again within TTL."""
+        # Reset cache state
+        roborev_cli._roborev_available = None
+        roborev_cli._roborev_checked_at = 0.0
+
+        with patch("claudechic.features.roborev.cli.shutil.which", return_value="/usr/bin/roborev") as mock_which:
+            assert roborev_cli.is_roborev_available() is True
+            assert roborev_cli.is_roborev_available() is True
+            assert mock_which.call_count == 1  # cached, not called twice
+
+        # Clean up
+        roborev_cli._roborev_available = None
+        roborev_cli._roborev_checked_at = 0.0
+
+    def test_refreshes_after_ttl(self):
+        """Cache refreshes after TTL expires."""
+        roborev_cli._roborev_available = None
+        roborev_cli._roborev_checked_at = 0.0
+
+        with (
+            patch("claudechic.features.roborev.cli.shutil.which", return_value="/usr/bin/roborev") as mock_which,
+            patch("claudechic.features.roborev.cli.time.monotonic", side_effect=[0.0, 0.5, 61.0, 61.0]),
+        ):
+            assert roborev_cli.is_roborev_available() is True  # monotonic=0.0, calls which
+            assert roborev_cli.is_roborev_available() is True  # monotonic=0.5, cached
+            assert roborev_cli.is_roborev_available() is True  # monotonic=61.0, expired, calls which again
+            assert mock_which.call_count == 2
+
+        roborev_cli._roborev_available = None
+        roborev_cli._roborev_checked_at = 0.0

@@ -726,6 +726,14 @@ def _handle_reviews(app: "ChatApp", job_id: str | None) -> None:
         app.run_worker(_list_reviews_in_chat(app))
 
 
+_VERDICT_MAP = {"p": "P", "pass": "P", "f": "F", "fail": "F"}
+
+
+def _format_verdict(verdict: object) -> str:
+    """Normalize a review verdict to a short display string (P/F/…)."""
+    return _VERDICT_MAP.get(str(verdict or "").lower(), "…")
+
+
 async def _list_reviews_in_chat(app: "ChatApp") -> None:
     """List reviews as a markdown table in the chat."""
     import asyncio
@@ -762,9 +770,7 @@ async def _list_reviews_in_chat(app: "ChatApp") -> None:
         "|-----|---------|-----|---------|-------|--------|",
     ]
     for r in reviews:
-        verdict = {"p": "P", "pass": "P", "f": "F", "fail": "F"}.get(
-            str(r.verdict or "").lower(), "…"
-        )
+        verdict = _format_verdict(r.verdict)
         sha = r.git_ref[:7] if r.git_ref else ""
         subject = r.commit_subject[:30] + ("…" if len(r.commit_subject) > 30 else "")
         lines.append(f"| {r.id} | {verdict} | `{sha}` | {subject} | {r.agent} | {r.status} |")
