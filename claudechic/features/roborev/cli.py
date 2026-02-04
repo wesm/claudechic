@@ -10,7 +10,7 @@ import json
 import logging
 import shutil
 import subprocess
-from functools import lru_cache
+import time
 from pathlib import Path
 
 from claudechic.features.roborev.models import ReviewDetail, ReviewJob
@@ -18,10 +18,19 @@ from claudechic.features.roborev.models import ReviewDetail, ReviewJob
 log = logging.getLogger(__name__)
 
 
-@lru_cache(maxsize=1)
+_roborev_available: bool | None = None
+_roborev_checked_at: float = 0.0
+_ROBOREV_CACHE_TTL = 60.0  # seconds
+
+
 def is_roborev_available() -> bool:
-    """Check if roborev CLI is on PATH. Cached for the process lifetime."""
-    return shutil.which("roborev") is not None
+    """Check if roborev CLI is on PATH. Cached with a 60-second TTL."""
+    global _roborev_available, _roborev_checked_at
+    now = time.monotonic()
+    if _roborev_available is None or (now - _roborev_checked_at) > _ROBOREV_CACHE_TTL:
+        _roborev_available = shutil.which("roborev") is not None
+        _roborev_checked_at = now
+    return _roborev_available
 
 
 def get_current_branch(cwd: Path) -> str:

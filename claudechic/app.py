@@ -859,6 +859,7 @@ class ChatApp(App):
         self._position_right_sidebar()
 
     _review_poll_timer: Timer | None = None
+    _review_poll_agent_id: str | None = None  # agent that owns the poll timer
 
     @work(exclusive=True, group="refresh_reviews", exit_on_error=False)
     async def _refresh_reviews(self, agent: Agent) -> None:
@@ -883,15 +884,24 @@ class ChatApp(App):
 
         self._stop_review_polling()
         if has_running_reviews(reviews):
+            self._review_poll_agent_id = agent.id
             self._review_poll_timer = self.set_timer(
                 5, lambda: self._refresh_reviews(agent)
             )
 
-    def _stop_review_polling(self) -> None:
-        """Cancel any pending review poll timer."""
-        if self._review_poll_timer is not None:
-            self._review_poll_timer.stop()
-            self._review_poll_timer = None
+    def _stop_review_polling(self, agent_id: str | None = None) -> None:
+        """Cancel any pending review poll timer.
+
+        If agent_id is given, only stops polling if it belongs to that agent.
+        If agent_id is None, stops unconditionally (e.g. on agent switch).
+        """
+        if self._review_poll_timer is None:
+            return
+        if agent_id is not None and self._review_poll_agent_id != agent_id:
+            return
+        self._review_poll_timer.stop()
+        self._review_poll_timer = None
+        self._review_poll_agent_id = None
 
     async def _load_and_display_history(
         self, session_id: str, cwd: Path | None = None
@@ -2221,8 +2231,8 @@ class ChatApp(App):
             )
         )
 
-        # Stop review polling if the closed agent had one running
-        self._stop_review_polling()
+        # Stop review polling only if the closed agent owned the timer
+        self._stop_review_polling(agent_id)
 
         try:
             self.agent_section.remove_agent(agent_id)
