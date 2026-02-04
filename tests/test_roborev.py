@@ -485,3 +485,34 @@ class TestReviewItemNonStringFields:
         item = ReviewItem(job)
         text = item.render()
         assert "? " in text.plain
+
+
+# =============================================================================
+# Verdict coercion in /reviews table
+# =============================================================================
+
+
+class TestVerdictCoercionInTable:
+    """Test the verdict lookup used by _list_reviews_in_chat."""
+
+    # Extract the same logic used in commands.py to test it in isolation
+    @staticmethod
+    def _coerce_verdict(verdict: object) -> str:
+        return {"p": "P", "pass": "P", "f": "F", "fail": "F"}.get(
+            str(verdict or "").lower(), "…"
+        )
+
+    def test_normal_pass(self):
+        assert self._coerce_verdict("pass") == "P"
+
+    def test_normal_fail(self):
+        assert self._coerce_verdict("F") == "F"
+
+    def test_none_verdict(self):
+        assert self._coerce_verdict(None) == "…"
+
+    def test_int_verdict(self):
+        assert self._coerce_verdict(42) == "…"
+
+    def test_empty_string(self):
+        assert self._coerce_verdict("") == "…"

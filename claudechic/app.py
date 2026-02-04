@@ -870,14 +870,19 @@ class ChatApp(App):
         cwd = agent.cwd
         branch = await asyncio.to_thread(get_current_branch, cwd)
         reviews = await asyncio.to_thread(list_reviews, cwd, branch)
+
+        # Guard: agent may have switched during the await calls above
+        if agent is not self._agent:
+            return
+
         self.review_panel.update_reviews(reviews)
         self._position_right_sidebar()
 
-        # Poll while any reviews are still running (only if agent is still active)
+        # Poll while any reviews are still running
         from claudechic.widgets.layout.reviews import has_running_reviews
 
         self._stop_review_polling()
-        if has_running_reviews(reviews) and agent is self._agent:
+        if has_running_reviews(reviews):
             self._review_poll_timer = self.set_timer(
                 5, lambda: self._refresh_reviews(agent)
             )
