@@ -769,11 +769,15 @@ async def _list_reviews_in_chat(app: "ChatApp") -> None:
         "| Job | Verdict | SHA | Subject | Agent | Status |",
         "|-----|---------|-----|---------|-------|--------|",
     ]
+    def _esc(s: str) -> str:
+        """Escape pipes and normalize newlines for markdown table cells."""
+        return s.replace("|", r"\|").replace("\n", " ")
+
     for r in reviews:
         verdict = _format_verdict(r.verdict)
         sha = r.git_ref[:7] if r.git_ref else ""
         subject = r.commit_subject[:30] + ("…" if len(r.commit_subject) > 30 else "")
-        lines.append(f"| {r.id} | {verdict} | `{sha}` | {subject} | {r.agent} | {r.status} |")
+        lines.append(f"| {r.id} | {verdict} | `{sha}` | {_esc(subject)} | {_esc(r.agent)} | {r.status} |")
     lines.append("\nUse `/reviews <job_id>` to see detail.")
 
     msg = ChatMessage("\n".join(lines))

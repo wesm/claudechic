@@ -882,7 +882,7 @@ class ChatApp(App):
         # Poll while any reviews are still running
         from claudechic.widgets.layout.reviews import has_running_reviews
 
-        self._stop_review_polling()
+        self._stop_review_polling(agent.id)
         if has_running_reviews(reviews):
             self._review_poll_agent_id = agent.id
             self._review_poll_timer = self.set_timer(

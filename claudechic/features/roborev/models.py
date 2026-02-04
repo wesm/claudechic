@@ -33,7 +33,7 @@ class ReviewJob:
             status=data.get("status") or "",
             verdict=data.get("verdict") or "",
             addressed=bool(data.get("addressed", False)),
-            commit_subject=data.get("commit_subject") or "",
+            commit_subject=str(data.get("commit_subject") or ""),
         )
 
 
