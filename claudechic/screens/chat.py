@@ -22,6 +22,7 @@ from claudechic.widgets import (
     PlanSection,
     FilesSection,
     HamburgerButton,
+    ReviewPanel,
 )
 from claudechic.widgets.layout.footer import StatusFooter
 
@@ -70,6 +71,7 @@ class ChatScreen(Screen):
                 yield PlanSection(id="plan-section", classes="hidden")
                 yield FilesSection(id="files-section", classes="hidden")
                 yield TodoPanel(id="todo-panel")
+                yield ReviewPanel(id="review-panel", classes="hidden")
                 yield ProcessPanel(id="process-panel", classes="hidden")
         yield StatusFooter()
 

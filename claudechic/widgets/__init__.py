@@ -62,6 +62,8 @@ from claudechic.widgets.layout import (
     ProcessIndicator,
     ProcessPanel,
     ProcessItem,
+    ReviewPanel,
+    ReviewItem,
 )
 
 # Base re-exports (ClickableLabel used by layout widgets)
@@ -139,6 +141,8 @@ __all__ = [
     "ProcessIndicator",
     "ProcessPanel",
     "ProcessItem",
+    "ReviewPanel",
+    "ReviewItem",
     "BackgroundProcess",
     # Reports
     "UsageReport",

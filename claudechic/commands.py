@@ -96,6 +96,7 @@ COMMANDS: list[tuple[str, str, list[str]]] = [
     ("/model", "Change model", []),
     ("/vim", "Toggle vi mode for input", []),
     ("/processes", "Show background processes", []),
+    ("/reviews", "Show roborev reviews", []),
     (
         "/analytics",
         "Analytics settings (opt-in/opt-out)",
@@ -137,6 +138,8 @@ def get_help_commands() -> list[tuple[str, str]]:
             display_name = "/compactish [-n]"
         elif name == "/worktree":
             display_name = "/worktree <name>"
+        elif name == "/reviews":
+            display_name = "/reviews [job_id]"
         elif name == "/reviewer":
             display_name = "/reviewer [focus]"
         elif name == "/plan-swarm":
@@ -253,6 +256,13 @@ def handle_command(app: "ChatApp", prompt: str) -> bool:
         app.run_worker(_handle_help(app))
         return True
 
+    if cmd == "/reviews" or cmd.startswith("/reviews "):
+        _track_command(app, "reviews")
+        parts = cmd.split(maxsplit=1)
+        job_id = parts[1] if len(parts) > 1 else None
+        _handle_reviews(app, job_id)
+        return True
+
     if cmd == "/processes":
         _track_command(app, "processes")
         _handle_processes(app)
@@ -301,16 +311,27 @@ def _is_user_command(cmd_name: str, cwd: Path) -> bool:
 
     Commands: ~/.claude/commands/<name>.md or .claude/commands/<name>.md
     Skills: ~/.claude/skills/<name>/SKILL.md or .claude/skills/<name>/SKILL.md
+
+    Skill slash commands use colon notation (e.g. /roborev:fix) but the
+    directories on disk use hyphens (e.g. roborev-fix/), so we check both.
     """
     name = cmd_name.lstrip("/")
     home = Path.home()
 
+    # Skill directories typically use hyphens on disk, but colons in slash commands
+    # e.g. /roborev:fix -> ~/.claude/skills/roborev-fix/SKILL.md
+    # Check both forms for backward compatibility with any colon-named directories.
+    skill_names = {name}
+    if ":" in name:
+        skill_names.add(name.replace(":", "-"))
+
     paths = [
         home / ".claude" / "commands" / f"{name}.md",  # global command
         cwd / ".claude" / "commands" / f"{name}.md",  # project command
-        home / ".claude" / "skills" / name / "SKILL.md",  # global skill
-        cwd / ".claude" / "skills" / name / "SKILL.md",  # project skill
     ]
+    for sname in skill_names:
+        paths.append(home / ".claude" / "skills" / sname / "SKILL.md")  # global skill
+        paths.append(cwd / ".claude" / "skills" / sname / "SKILL.md")  # project skill
     return any(p.exists() for p in paths)
 
 
@@ -687,6 +708,125 @@ def _handle_processes(app: "ChatApp") -> None:
     else:
         processes = []
     app.push_screen(ProcessModal(processes))
+
+
+def _handle_reviews(app: "ChatApp", job_id: str | None) -> None:
+    """Show roborev reviews: list all or show detail for a specific job."""
+
+    agent = app._agent
+    if not agent:
+        app.notify("No active agent", severity="error")
+        return
+
+    if job_id:
+        # Show detail for specific job
+        app.run_worker(_show_review_detail(app, job_id))
+    else:
+        # List all reviews for current branch
+        app.run_worker(_list_reviews_in_chat(app))
+
+
+_VERDICT_MAP = {"p": "P", "pass": "P", "f": "F", "fail": "F"}
+
+
+def _format_verdict(verdict: object) -> str:
+    """Normalize a review verdict to a short display string (P/F/…)."""
+    return _VERDICT_MAP.get(str(verdict or "").lower(), "…")
+
+
+async def _list_reviews_in_chat(app: "ChatApp") -> None:
+    """List reviews as a markdown table in the chat."""
+    import asyncio
+
+    from claudechic.features.roborev import get_current_branch, list_reviews
+    from claudechic.widgets import ChatMessage
+
+    agent = app._agent
+    if not agent:
+        return
+
+    cwd = agent.cwd
+    branch = await asyncio.to_thread(get_current_branch, cwd)
+    reviews = await asyncio.to_thread(list_reviews, cwd, branch)
+
+    chat_view = app._chat_view
+    if not chat_view:
+        return
+
+    if not reviews:
+        msg = ChatMessage(
+            "No roborev reviews found"
+            + (f" for branch `{branch}`" if branch else "")
+            + "."
+        )
+        msg.add_class("system-message")
+        chat_view.mount(msg)
+        chat_view.scroll_if_tailing()
+        return
+
+    lines = [
+        f"**Reviews** ({branch or 'all branches'})\n",
+        "| Job | Verdict | SHA | Subject | Agent | Status |",
+        "|-----|---------|-----|---------|-------|--------|",
+    ]
+    for r in reviews:
+        verdict = _format_verdict(r.verdict)
+        sha = r.git_ref[:7] if r.git_ref else ""
+        subject = r.commit_subject[:30] + ("…" if len(r.commit_subject) > 30 else "")
+        lines.append(f"| {r.id} | {verdict} | `{sha}` | {subject} | {r.agent} | {r.status} |")
+    lines.append("\nUse `/reviews <job_id>` to see detail.")
+
+    msg = ChatMessage("\n".join(lines))
+    msg.add_class("system-message")
+    chat_view.mount(msg)
+    chat_view.scroll_if_tailing()
+
+
+async def _show_review_detail(app: "ChatApp", job_id: str) -> None:
+    """Show detail for a specific review job."""
+    import asyncio
+
+    from claudechic.features.roborev import show_review
+    from claudechic.widgets import ChatMessage
+
+    agent = app._agent
+    if not agent:
+        return
+
+    detail = await asyncio.to_thread(show_review, job_id, agent.cwd)
+
+    chat_view = app._chat_view
+    if not chat_view:
+        return
+
+    if not detail:
+        msg = ChatMessage(f"Review `{job_id}` not found.")
+        msg.add_class("system-message")
+        chat_view.mount(msg)
+        chat_view.scroll_if_tailing()
+        return
+
+    lines = [
+        f"**Review** `{detail.id}`\n",
+        f"- **Job:** {detail.job_id}",
+        f"- **Agent:** {detail.agent}",
+        f"- **Addressed:** {'Yes' if detail.addressed else 'No'}",
+    ]
+    if detail.job:
+        lines.extend(
+            [
+                f"- **Verdict:** {detail.job.verdict}",
+                f"- **Branch:** {detail.job.branch}",
+                f"- **Commit:** `{detail.job.git_ref[:7]}` {detail.job.commit_subject}",
+            ]
+        )
+    if detail.output:
+        lines.extend(["", "---", "", detail.output])
+
+    msg = ChatMessage("\n".join(lines))
+    msg.add_class("system-message")
+    chat_view.mount(msg)
+    chat_view.scroll_if_tailing()
 
 
 def _handle_vim(app: "ChatApp") -> bool:

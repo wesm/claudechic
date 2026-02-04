@@ -29,6 +29,10 @@ from claudechic.widgets.layout.processes import (
     ProcessPanel,
     ProcessItem,
 )
+from claudechic.widgets.layout.reviews import (
+    ReviewPanel,
+    ReviewItem,
+)
 
 __all__ = [
     "ChatView",
@@ -52,4 +56,6 @@ __all__ = [
     "ProcessIndicator",
     "ProcessPanel",
     "ProcessItem",
+    "ReviewPanel",
+    "ReviewItem",
 ]
