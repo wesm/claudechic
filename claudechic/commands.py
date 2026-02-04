@@ -311,15 +311,22 @@ def _is_user_command(cmd_name: str, cwd: Path) -> bool:
 
     Commands: ~/.claude/commands/<name>.md or .claude/commands/<name>.md
     Skills: ~/.claude/skills/<name>/SKILL.md or .claude/skills/<name>/SKILL.md
+
+    Skill slash commands use colon notation (e.g. /roborev:fix) but the
+    directories on disk use hyphens (e.g. roborev-fix/), so we check both.
     """
     name = cmd_name.lstrip("/")
     home = Path.home()
 
+    # Skill directories use hyphens on disk, but colons in slash commands
+    # e.g. /roborev:fix -> ~/.claude/skills/roborev-fix/SKILL.md
+    dir_name = name.replace(":", "-")
+
     paths = [
         home / ".claude" / "commands" / f"{name}.md",  # global command
         cwd / ".claude" / "commands" / f"{name}.md",  # project command
-        home / ".claude" / "skills" / name / "SKILL.md",  # global skill
-        cwd / ".claude" / "skills" / name / "SKILL.md",  # project skill
+        home / ".claude" / "skills" / dir_name / "SKILL.md",  # global skill
+        cwd / ".claude" / "skills" / dir_name / "SKILL.md",  # project skill
     ]
     return any(p.exists() for p in paths)
 
