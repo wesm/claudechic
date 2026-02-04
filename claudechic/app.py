@@ -72,6 +72,7 @@ from claudechic.widgets import (
     TodoWidget,
     TodoPanel,
     ProcessPanel,
+    ReviewPanel,
     SelectionPrompt,
     QuestionPrompt,
     TextAreaAutoComplete,
@@ -184,6 +185,7 @@ class ChatApp(App):
         self._plan_section: PlanSection | None = None
         self._files_section: FilesSection | None = None
         self._todo_panel: TodoPanel | None = None
+        self._review_panel: ReviewPanel | None = None
         self._process_panel: ProcessPanel | None = None
         self._context_bar: ContextBar | None = None
         self._right_sidebar: Vertical | None = None
@@ -359,6 +361,12 @@ class ChatApp(App):
         if self._todo_panel is None:
             self._todo_panel = self.query_one("#todo-panel", TodoPanel)
         return self._todo_panel
+
+    @property
+    def review_panel(self) -> ReviewPanel:
+        if self._review_panel is None:
+            self._review_panel = self.query_one("#review-panel", ReviewPanel)
+        return self._review_panel
 
     @property
     def process_panel(self) -> ProcessPanel:
@@ -844,6 +852,19 @@ class ChatApp(App):
         self.status_footer.update_processes(processes)
         self._position_right_sidebar()
 
+    @work(exclusive=True, group="refresh_reviews", exit_on_error=False)
+    async def _refresh_reviews(self, agent: Agent) -> None:
+        """Fetch roborev reviews for the agent's branch and update the sidebar panel."""
+        import asyncio
+
+        from claudechic.features.roborev.cli import get_current_branch, list_reviews
+
+        cwd = agent.cwd
+        branch = await asyncio.to_thread(get_current_branch, cwd)
+        reviews = await asyncio.to_thread(list_reviews, cwd, branch)
+        self.review_panel.update_reviews(reviews)
+        self._position_right_sidebar()
+
     async def _load_and_display_history(
         self, session_id: str, cwd: Path | None = None
     ) -> None:
@@ -1092,7 +1113,10 @@ class ChatApp(App):
         # Show sidebar when wide enough and we have multiple agents, worktrees, or todos
         agent_count = len(self.agent_mgr) if self.agent_mgr else 0
         has_content = bool(
-            agent_count > 1 or self.agent_section._worktrees or self.todo_panel.todos
+            agent_count > 1
+            or self.agent_section._worktrees
+            or self.todo_panel.todos
+            or (self._review_panel and self._review_panel.review_count)
         )
         width = self.size.width
         main = self.query_one("#main", Horizontal)
@@ -1158,6 +1182,7 @@ class ChatApp(App):
         # Count items in each section
         agent_count = self.agent_section.item_count
         todo_count = len(self.todo_panel.todos)
+        review_count = self.review_panel.review_count
         process_count = self.process_panel.process_count
         has_plan = self.plan_section.has_plan
 
@@ -1169,6 +1194,9 @@ class ChatApp(App):
         # TodoPanel: border-top(1) + padding(2) + title with padding(2) = 5 lines overhead
         TODO_OVERHEAD = 5
         TODO_ITEM = 1
+        # ReviewPanel: same structure as TodoPanel
+        REVIEW_OVERHEAD = 5
+        REVIEW_ITEM = 1
         # ProcessPanel: same structure as TodoPanel
         PROCESS_OVERHEAD = 5
         PROCESS_ITEM = 1
@@ -1195,6 +1223,13 @@ class ChatApp(App):
         else:
             self.agent_section.set_compact(True)
             remaining -= agents_compact
+
+        # Reviews: show if room
+        if review_count and remaining >= REVIEW_OVERHEAD + review_count * REVIEW_ITEM:
+            self.review_panel.set_visible(True)
+            remaining -= REVIEW_OVERHEAD + review_count * REVIEW_ITEM
+        else:
+            self.review_panel.set_visible(False)
 
         # Processes: show if room
         if (
@@ -1235,6 +1270,10 @@ class ChatApp(App):
         # This check is agent-scoped so switching agents won't trigger cleanup
         if agent and agent.finish_state:
             on_response_complete_finish(self, agent)
+
+        # Refresh roborev reviews after response
+        if agent:
+            self._refresh_reviews(agent)
 
         # Check for plan file and update sidebar
         if agent and agent.session_id:

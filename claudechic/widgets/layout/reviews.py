@@ -1,0 +1,114 @@
+"""Review panel widget for displaying roborev reviews in the sidebar."""
+
+from __future__ import annotations
+
+from rich.text import Text
+from textual.app import ComposeResult
+from textual.widget import Widget
+from textual.widgets import Static
+
+from claudechic.features.roborev.models import ReviewJob
+
+
+class ReviewItem(Static):
+    """Single review item: verdict icon, short SHA, truncated subject. Click shows detail."""
+
+    DEFAULT_CSS = """
+    ReviewItem {
+        height: 1;
+        pointer: pointer;
+    }
+    ReviewItem:hover {
+        background: $panel;
+    }
+    """
+
+    can_focus = True
+
+    def __init__(self, review: ReviewJob) -> None:
+        super().__init__()
+        self.review = review
+
+    def render(self) -> Text:
+        # Verdict icon: P green, F red, ... yellow for pending/unknown
+        verdict = self.review.verdict.lower()
+        if verdict == "pass":
+            icon = ("P ", "green")
+        elif verdict == "fail":
+            icon = ("F ", "red")
+        else:
+            icon = ("… ", "yellow")
+
+        # Short SHA (first 7 chars of git_ref)
+        sha = self.review.git_ref[:7] if self.review.git_ref else "???????"
+
+        # Truncated subject
+        subject = self.review.commit_subject
+        max_len = 18
+        if len(subject) > max_len:
+            subject = subject[: max_len - 1] + "…"
+
+        return Text.assemble(icon, (f"{sha} ", "dim"), (subject, ""))
+
+    def on_click(self, event) -> None:  # noqa: ARG002
+        """Show review detail in chat via /reviews <id>."""
+        from claudechic.commands import handle_command
+
+        handle_command(self.app, f"/reviews {self.review.id}")  # type: ignore[arg-type]
+
+
+class ReviewPanel(Widget):
+    """Sidebar panel for roborev reviews."""
+
+    DEFAULT_CSS = """
+    ReviewPanel {
+        width: 100%;
+        height: auto;
+        max-height: 30%;
+        border-top: solid $panel;
+        padding: 1;
+    }
+    ReviewPanel.hidden {
+        display: none;
+    }
+    ReviewPanel .review-title {
+        color: $text-muted;
+        text-style: bold;
+        padding: 0 0 1 0;
+    }
+    ReviewItem {
+        height: 1;
+    }
+    """
+
+    can_focus = False
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._reviews: list[ReviewJob] = []
+
+    @property
+    def review_count(self) -> int:
+        """Number of reviews."""
+        return len(self._reviews)
+
+    def compose(self) -> ComposeResult:
+        yield Static("Reviews", classes="review-title")
+
+    def set_visible(self, visible: bool) -> None:
+        """Control visibility (only shows if has reviews and visible=True)."""
+        if visible and self._reviews:
+            self.remove_class("hidden")
+        else:
+            self.add_class("hidden")
+
+    def update_reviews(self, reviews: list[ReviewJob]) -> None:
+        """Replace reviews with new list. Visibility controlled by set_visible()."""
+        self._reviews = reviews
+        # Remove old items
+        for item in self.query(ReviewItem):
+            item.remove()
+
+        # Add new items
+        for review in reviews:
+            self.mount(ReviewItem(review))
