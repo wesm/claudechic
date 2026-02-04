@@ -752,7 +752,9 @@ async def _list_reviews_in_chat(app: "ChatApp") -> None:
         "|---------|-----|---------|-------|--------|",
     ]
     for r in reviews:
-        verdict = {"pass": "P", "fail": "F"}.get(r.verdict.lower(), "…")
+        verdict = {"p": "P", "pass": "P", "f": "F", "fail": "F"}.get(
+            r.verdict.lower(), "…"
+        )
         sha = r.git_ref[:7] if r.git_ref else ""
         subject = r.commit_subject[:30] + ("…" if len(r.commit_subject) > 30 else "")
         lines.append(f"| {verdict} | `{sha}` | {subject} | {r.agent} | {r.status} |")

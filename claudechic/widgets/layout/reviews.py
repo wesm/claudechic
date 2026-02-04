@@ -31,10 +31,10 @@ class ReviewItem(Static):
 
     def render(self) -> Text:
         # Verdict icon: P green, F red, ... yellow for pending/unknown
-        verdict = self.review.verdict.lower()
-        if verdict == "pass":
+        verdict = self.review.verdict.upper()
+        if verdict in ("P", "PASS"):
             icon = ("P ", "green")
-        elif verdict == "fail":
+        elif verdict in ("F", "FAIL"):
             icon = ("F ", "red")
         else:
             icon = ("… ", "yellow")
