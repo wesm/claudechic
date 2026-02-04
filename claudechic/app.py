@@ -16,6 +16,7 @@ from typing import Any, TYPE_CHECKING
 if TYPE_CHECKING:
     from claude_agent_sdk.types import HookEvent
     from claudechic.screens.chat import ChatScreen
+    from textual.timer import Timer
 
 from textual.app import App
 from textual.screen import Screen
@@ -857,6 +858,8 @@ class ChatApp(App):
         self.status_footer.update_processes(processes)
         self._position_right_sidebar()
 
+    _review_poll_timer: Timer | None = None
+
     @work(exclusive=True, group="refresh_reviews", exit_on_error=False)
     async def _refresh_reviews(self, agent: Agent) -> None:
         """Fetch roborev reviews for the agent's branch and update the sidebar panel."""
@@ -869,6 +872,22 @@ class ChatApp(App):
         reviews = await asyncio.to_thread(list_reviews, cwd, branch)
         self.review_panel.update_reviews(reviews)
         self._position_right_sidebar()
+
+        # Poll while any reviews are still running
+        has_running = any(
+            r.status.lower() in {"running", "queued", "pending"} for r in reviews
+        )
+        self._stop_review_polling()
+        if has_running:
+            self._review_poll_timer = self.set_timer(
+                5, lambda: self._refresh_reviews(agent)
+            )
+
+    def _stop_review_polling(self) -> None:
+        """Cancel any pending review poll timer."""
+        if self._review_poll_timer is not None:
+            self._review_poll_timer.stop()
+            self._review_poll_timer = None
 
     async def _load_and_display_history(
         self, session_id: str, cwd: Path | None = None
