@@ -708,6 +708,11 @@ class ChatApp(App):
         if CONFIG.get("vi-mode"):
             self._update_vi_mode(True)
 
+        # Refresh roborev reviews for initial agent
+        agent = self._agent
+        if agent:
+            self._refresh_reviews(agent)
+
         # Connect SDK in background - UI renders while this happens
         self._connect_initial_client()
 
