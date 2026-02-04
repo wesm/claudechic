@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
+def _str_id(value: object) -> str:
+    """Coerce an ID (int, str, or None) to str. None becomes ""."""
+    return "" if value is None else str(value)
+
+
 @dataclass
 class ReviewJob:
     """A single roborev review job from `roborev list --json`."""
@@ -21,7 +26,7 @@ class ReviewJob:
     @classmethod
     def from_dict(cls, data: dict) -> ReviewJob:
         return cls(
-            id=str(data.get("id", "")),
+            id=_str_id(data.get("id")),
             git_ref=data.get("git_ref") or "",
             branch=data.get("branch") or "",
             agent=data.get("agent") or "",
@@ -48,8 +53,8 @@ class ReviewDetail:
         job_data = data.get("job")
         job = ReviewJob.from_dict(job_data) if isinstance(job_data, dict) else None
         return cls(
-            id=str(data.get("id", "")),
-            job_id=str(data.get("job_id", "")),
+            id=_str_id(data.get("id")),
+            job_id=_str_id(data.get("job_id")),
             agent=data.get("agent") or "",
             output=data.get("output") or "",
             addressed=bool(data.get("addressed", False)),
