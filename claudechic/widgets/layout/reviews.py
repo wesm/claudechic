@@ -9,6 +9,12 @@ from textual.widgets import Static
 
 from claudechic.features.roborev.models import ReviewJob
 
+# Statuses that mean the review is still in progress
+_RUNNING_STATUSES = frozenset({"running", "queued", "pending"})
+
+# Braille spinner frames (same as widgets.primitives.Spinner)
+_SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
 
 class ReviewItem(Static):
     """Single review item: verdict icon, short SHA, truncated subject. Click shows detail."""
@@ -28,16 +34,36 @@ class ReviewItem(Static):
     def __init__(self, review: ReviewJob) -> None:
         super().__init__()
         self.review = review
+        self._spinner_frame = 0
+        self._timer = None
+
+    @property
+    def _is_running(self) -> bool:
+        return self.review.status.lower() in _RUNNING_STATUSES
+
+    def on_mount(self) -> None:
+        if self._is_running:
+            self._timer = self.set_interval(1 / 10, self._tick)
+
+    def on_unmount(self) -> None:
+        if self._timer is not None:
+            self._timer.stop()
+            self._timer = None
+
+    def _tick(self) -> None:
+        self._spinner_frame = (self._spinner_frame + 1) % len(_SPINNER_FRAMES)
+        self.refresh(layout=False)
 
     def render(self) -> Text:
-        # Verdict icon: P green, F red, ... yellow for pending/unknown
-        verdict = self.review.verdict.upper()
-        if verdict in ("P", "PASS"):
+        # Verdict icon: P green, F red, spinner for running
+        if self._is_running:
+            icon = (_SPINNER_FRAMES[self._spinner_frame] + " ", "yellow")
+        elif self.review.verdict.upper() in ("P", "PASS"):
             icon = ("P ", "green")
-        elif verdict in ("F", "FAIL"):
+        elif self.review.verdict.upper() in ("F", "FAIL"):
             icon = ("F ", "red")
         else:
-            icon = ("… ", "yellow")
+            icon = ("? ", "dim")
 
         # Short SHA (first 7 chars of git_ref)
         sha = self.review.git_ref[:7] if self.review.git_ref else "???????"
