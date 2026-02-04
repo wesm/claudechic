@@ -10,6 +10,7 @@ import json
 import logging
 import shutil
 import subprocess
+from functools import lru_cache
 from pathlib import Path
 
 from claudechic.features.roborev.models import ReviewDetail, ReviewJob
@@ -17,8 +18,9 @@ from claudechic.features.roborev.models import ReviewDetail, ReviewJob
 log = logging.getLogger(__name__)
 
 
+@lru_cache(maxsize=1)
 def is_roborev_available() -> bool:
-    """Check if roborev CLI is on PATH."""
+    """Check if roborev CLI is on PATH. Cached for the process lifetime."""
     return shutil.which("roborev") is not None
 
 

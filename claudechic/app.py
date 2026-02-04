@@ -1205,7 +1205,7 @@ class ChatApp(App):
         # Count items in each section
         agent_count = self.agent_section.item_count
         todo_count = len(self.todo_panel.todos)
-        review_count = self.review_panel.review_count
+        review_count = self._review_panel.review_count if self._review_panel else 0
         process_count = self.process_panel.process_count
         has_plan = self.plan_section.has_plan
 
@@ -2188,6 +2188,10 @@ class ChatApp(App):
         # Single CSS refresh at the end
         self.refresh_css(animate=False)
 
+        # Stop polling for old agent's reviews and refresh for new agent
+        self._stop_review_polling()
+        self._refresh_reviews(new_agent)
+
         # These happen outside (async/focus)
         create_safe_task(self._async_refresh_files(new_agent), name="refresh-files")
         create_safe_task(
@@ -2211,6 +2215,9 @@ class ChatApp(App):
                 message_count=message_count,
             )
         )
+
+        # Stop review polling if the closed agent had one running
+        self._stop_review_polling()
 
         try:
             self.agent_section.remove_agent(agent_id)
