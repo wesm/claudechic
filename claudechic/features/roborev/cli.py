@@ -64,7 +64,10 @@ def list_reviews(
 
         data = json.loads(result.stdout)
         if isinstance(data, list):
-            return [ReviewJob.from_dict(item) for item in data[:limit]]
+            jobs = [ReviewJob.from_dict(item) for item in data]
+            # Show only unaddressed reviews by default
+            unaddressed = [j for j in jobs if not j.addressed]
+            return unaddressed[:limit]
     except Exception:
         log.debug("Failed to list reviews", exc_info=True)
     return []
