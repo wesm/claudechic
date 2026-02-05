@@ -811,8 +811,14 @@ class ChatApp(App):
             else list(self.LOCAL_COMMANDS)
         )
 
-        # Remove old dynamic completions (keep static worktree commands)
-        static_worktree = {"/worktree finish", "/worktree cleanup"}
+        # Remove old dynamic completions (keep static worktree commands from COMMANDS)
+        from claudechic.commands import COMMANDS
+
+        static_worktree = set(
+            next(
+                (variants for name, _, variants in COMMANDS if name == "/worktree"), []
+            )
+        )
         base = [
             c
             for c in base

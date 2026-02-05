@@ -86,7 +86,7 @@ COMMANDS: list[tuple[str, str, list[str]]] = [
     (
         "/worktree",
         "Create git worktree with agent",
-        ["/worktree finish", "/worktree cleanup"],
+        ["/worktree finish", "/worktree cleanup", "/worktree discard"],
     ),
     ("/agent", "Create or list agents", ["/agent close"]),
     ("/shell", "Run shell command (or -i for interactive)", []),
