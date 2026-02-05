@@ -10,6 +10,22 @@ def _str_id(value: object) -> str:
     return "" if value is None else str(value)
 
 
+def normalize_status(status: object) -> str:
+    """Coerce a status value to a lowercase string, safely."""
+    if status is None:
+        return ""
+    if not isinstance(status, str):
+        return str(status).lower()
+    return status.lower()
+
+
+# Statuses that mean the review is still in progress
+RUNNING_STATUSES = frozenset({"running", "queued", "pending"})
+
+# Statuses shown in the sidebar/list (running + completed)
+VISIBLE_STATUSES = RUNNING_STATUSES | {"done"}
+
+
 @dataclass
 class ReviewJob:
     """A single roborev review job from `roborev list --json`."""

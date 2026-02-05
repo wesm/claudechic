@@ -7,19 +7,11 @@ from textual.app import ComposeResult
 from textual.widget import Widget
 from textual.widgets import Static
 
-from claudechic.features.roborev.models import ReviewJob
-
-# Statuses that mean the review is still in progress
-_RUNNING_STATUSES = frozenset({"running", "queued", "pending"})
-
-
-def _normalize_status(status: object) -> str:
-    """Coerce a status value to a lowercase string, safely."""
-    if status is None:
-        return ""
-    if not isinstance(status, str):
-        return str(status).lower()
-    return status.lower()
+from claudechic.features.roborev.models import (
+    RUNNING_STATUSES,
+    ReviewJob,
+    normalize_status,
+)
 
 
 def has_running_reviews(reviews: list[ReviewJob]) -> bool:
@@ -27,7 +19,7 @@ def has_running_reviews(reviews: list[ReviewJob]) -> bool:
 
     Tolerates None or non-string status values.
     """
-    return any(_normalize_status(r.status) in _RUNNING_STATUSES for r in reviews)
+    return any(normalize_status(r.status) in RUNNING_STATUSES for r in reviews)
 
 
 # Braille spinner frames (same as widgets.primitives.Spinner)
@@ -57,7 +49,7 @@ class ReviewItem(Static):
 
     @property
     def _is_running(self) -> bool:
-        return _normalize_status(self.review.status) in _RUNNING_STATUSES
+        return normalize_status(self.review.status) in RUNNING_STATUSES
 
     def on_mount(self) -> None:
         if self._is_running:
