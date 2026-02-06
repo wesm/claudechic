@@ -27,6 +27,14 @@ def main():
         "--session", "-s", type=str, help="Resume a specific session ID"
     )
     parser.add_argument(
+        "--theme",
+        "-t",
+        nargs="?",
+        const="__list__",
+        default=None,
+        help="Use a specific theme for this session, or pass without a value to list available themes",
+    )
+    parser.add_argument(
         "--remote-port",
         type=int,
         default=int(os.environ.get("CLAUDECHIC_REMOTE_PORT", "0")),
@@ -48,6 +56,22 @@ def main():
         args.session if args.session else ("__most_recent__" if args.resume else None)
     )
 
+    # Validate theme name or list available themes
+    if args.theme:
+        from claudechic.theme import get_available_theme_names
+
+        available = get_available_theme_names()
+        if args.theme == "__list__":
+            print("Available themes:")
+            for name in sorted(available):
+                print(f"  {name}")
+            sys.exit(0)
+        if args.theme not in available:
+            print(f"Unknown theme '{args.theme}'. Available themes:")
+            for name in sorted(available):
+                print(f"  {name}")
+            sys.exit(1)
+
     # Set terminal window title (before Textual takes over stdout)
     from pathlib import Path
     from rich.console import Console
@@ -61,6 +85,7 @@ def main():
             initial_prompt=initial_prompt,
             remote_port=args.remote_port,
             skip_permissions=args.dangerously_skip_permissions,
+            theme_override=args.theme,
         )
         app.run()
     except (KeyboardInterrupt, SystemExit):

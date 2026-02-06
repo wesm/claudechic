@@ -165,6 +165,7 @@ class ChatApp(App):
         initial_prompt: str | None = None,
         remote_port: int = 0,
         skip_permissions: bool = False,
+        theme_override: str | None = None,
     ) -> None:
         super().__init__()
         self.scroll_sensitivity_y = 1.0  # Smoother scrolling (default is 2.0)
@@ -175,6 +176,7 @@ class ChatApp(App):
         self._initial_prompt = initial_prompt
         self._remote_port = remote_port
         self._skip_permissions = skip_permissions
+        self._theme_override = theme_override
         # Event queues for testing
         self.interactions: asyncio.Queue[PermissionRequest] = asyncio.Queue()
         self.completions: asyncio.Queue[ResponseComplete] = asyncio.Queue()
@@ -672,7 +674,7 @@ class ChatApp(App):
         self.register_theme(CHIC_LIGHT_THEME)
         for theme in load_custom_themes():
             self.register_theme(theme)
-        self.theme = CONFIG.get("theme") or "chic"
+        self.theme = self._theme_override or CONFIG.get("theme") or "chic"
 
         # Warn if running in YOLO mode
         if self._skip_permissions:
@@ -714,7 +716,9 @@ class ChatApp(App):
         self._connect_initial_client()
 
     def watch_theme(self, theme: str) -> None:
-        """Save theme preference when changed."""
+        """Save theme preference when changed (skip if overridden by CLI flag)."""
+        if self._theme_override:
+            return
         if theme != CONFIG.get("theme"):
             CONFIG["theme"] = theme
             save_config()

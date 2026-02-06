@@ -19,7 +19,7 @@ Custom themes can be defined in ~/.claude/.claudechic.yaml:
 Use /theme to search and switch between available themes.
 """
 
-from textual.theme import Theme
+from textual.theme import BUILTIN_THEMES, Theme
 
 from claudechic.config import CONFIG
 
@@ -70,6 +70,15 @@ _THEME_FIELDS = (
     "dark",
 )
 _CHIC_DEFAULTS = {f: getattr(CHIC_THEME, f) for f in _THEME_FIELDS}
+
+
+def get_available_theme_names() -> set[str]:
+    """Return names of all available themes (Textual built-in + claudechic + custom)."""
+    names = set(BUILTIN_THEMES.keys()) | {"chic", "chic-light"}
+    for name, colors in CONFIG.get("themes", {}).items():
+        if isinstance(colors, dict):
+            names.add(name)
+    return names
 
 
 def load_custom_themes() -> list[Theme]:
